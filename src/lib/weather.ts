@@ -34,6 +34,8 @@ export type RainViewerRadarFrame = {
 export type RainViewerRadar = {
   generated: number;
   host: string;
+  pastFrames: RainViewerRadarFrame[];
+  nowcastFrames: RainViewerRadarFrame[];
   frames: RainViewerRadarFrame[];
 };
 
@@ -77,11 +79,15 @@ export async function fetchRainViewerRadar(signal?: AbortSignal): Promise<RainVi
   const response = await fetch("https://api.rainviewer.com/public/weather-maps.json", { signal, cache: "no-store" });
   if (!response.ok) throw new Error("Radar service is unavailable");
   const payload = await response.json() as RainViewerResponse;
-  const frames = [...(payload.radar?.past ?? []), ...(payload.radar?.nowcast ?? [])];
+  const pastFrames = payload.radar?.past ?? [];
+  const nowcastFrames = payload.radar?.nowcast ?? [];
+  const frames = [...pastFrames, ...nowcastFrames];
   if (!payload.host || !frames.length) throw new Error("No radar frames available");
   return {
     generated: payload.generated ?? Math.floor(Date.now() / 1000),
     host: payload.host,
+    pastFrames,
+    nowcastFrames,
     frames,
   };
 }

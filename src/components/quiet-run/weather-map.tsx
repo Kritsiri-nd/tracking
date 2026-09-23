@@ -1,6 +1,6 @@
 "use client";
 
-import { MapPin, Radio } from "lucide-react";
+import { MapPin, Pause, Play, Radio } from "lucide-react";
 import { Fragment } from "react";
 import { useEffect, useState } from "react";
 import { Circle, CircleMarker, MapContainer, TileLayer, Tooltip } from "react-leaflet";
@@ -67,13 +67,18 @@ function MapLegend({ layer }: { layer: WeatherLayer }) {
 
 export function WeatherMap({ forecast, selectedHour, layer, selectedLocationName }: { forecast: WeatherExplorerForecast; selectedHour: number; layer: WeatherLayer; selectedLocationName: string }) {
   const [radar, setRadar] = useState<RainViewerRadar>();
+  const [radarFrameIndex, setRadarFrameIndex] = useState(0);
+  const [radarPlaying, setRadarPlaying] = useState(false);
 
   useEffect(() => {
     let active = true;
     const loadRadar = () => {
       const controller = new AbortController();
       void fetchRainViewerRadar(controller.signal).then((nextRadar) => {
-        if (active) setRadar(nextRadar);
+        if (active) {
+          setRadar(nextRadar);
+          setRadarFrameIndex(Math.max(nextRadar.pastFrames.length - 1, 0));
+        }
       }).catch(() => undefined);
       return controller;
     };
@@ -89,14 +94,29 @@ export function WeatherMap({ forecast, selectedHour, layer, selectedLocationName
     };
   }, []);
 
-  const latestRadar = radar?.frames.at(-1);
-  const radarTime = latestRadar ? new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(latestRadar.time * 1000)) : undefined;
+  const radarFrames = radar?.pastFrames.length ? radar.pastFrames : radar?.frames ?? [];
+  const activeRadarFrame = radarFrames[radarFrameIndex] ?? radarFrames.at(-1);
+  const radarTime = activeRadarFrame ? new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(activeRadarFrame.time * 1000)) : undefined;
+
+  useEffect(() => {
+    if (!radarPlaying || layer !== "rain" || selectedHour !== 0 || radarFrames.length < 2) return;
+    const timer = window.setInterval(() => {
+      setRadarFrameIndex((current) => (current + 1) % radarFrames.length);
+    }, 900);
+    return () => window.clearInterval(timer);
+  }, [layer, radarFrames.length, radarPlaying, selectedHour]);
+
+  const toggleRadarPlayback = () => {
+    if (!radarFrames.length) return;
+    if (radarFrameIndex >= radarFrames.length - 1) setRadarFrameIndex(0);
+    setRadarPlaying((current) => !current);
+  };
 
   return (
     <div className="route-map relative h-[280px] overflow-hidden rounded-[22px] border border-white/60 bg-[#e8e6dc] shadow-inner sm:h-[500px]">
       <MapContainer center={[forecast.latitude, forecast.longitude]} zoom={10} className="h-full w-full" scrollWheelZoom doubleClickZoom>
         <TileLayer className="weather-base-tile" attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" maxZoom={19} />
-        {layer === "rain" && selectedHour === 0 && radar && latestRadar && <TileLayer key={latestRadar.path} attribution='<a href="https://www.rainviewer.com/">RainViewer</a>' url={`${radar.host}${latestRadar.path}/256/{z}/{x}/{y}/2/1_1.png`} opacity={0.76} maxNativeZoom={7} maxZoom={19} tileSize={256} zIndex={300} />}
+        {layer === "rain" && selectedHour === 0 && radar && activeRadarFrame && <TileLayer key={activeRadarFrame.path} attribution='<a href="https://www.rainviewer.com/">RainViewer</a>' url={`${radar.host}${activeRadarFrame.path}/256/{z}/{x}/{y}/2/1_1.png`} opacity={0.76} maxNativeZoom={7} maxZoom={19} tileSize={256} zIndex={300} />}
         {forecast.points.map((point) => {
           const reading = point.readings[selectedHour] ?? point.readings[0];
           if (!reading) return null;
@@ -106,8 +126,14 @@ export function WeatherMap({ forecast, selectedHour, layer, selectedLocationName
           return <Fragment key={`${point.latitude}-${point.longitude}`}>{(layer !== "rain" || selectedHour > 0) && <Circle center={center} radius={8500} pathOptions={{ color: layerColor(layer, reading), weight: 1, opacity: .4, fillColor: layerColor(layer, reading), fillOpacity: opacity }} />}<CircleMarker center={center} radius={selected ? 8 : 5} pathOptions={{ color: "#ffffff", weight: selected ? 3 : 2, fillColor: selected ? "#a6ff00" : "#343b34", fillOpacity: 1 }}><Tooltip direction="top" offset={[0, -7]} permanent>{point.name}</Tooltip></CircleMarker></Fragment>;
         })}
       </MapContainer>
-      <div className="pointer-events-none absolute left-3 top-3 z-[400] flex items-center gap-2 rounded-full border border-white/20 bg-[#101615]/82 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[.14em] text-white shadow-sm backdrop-blur-sm"><MapPin size={13} />{forecast.locationName} · {layer === "rain" && latestRadar && selectedHour === 0 ? "Live radar" : "Forecast"}</div>
-      <div className="pointer-events-none absolute bottom-3 left-3 right-3 z-[400] flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/20 bg-[#101615]/82 px-3 py-2 shadow-sm backdrop-blur-sm"><MapLegend layer={layer} /><span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-white">{layer === "rain" && latestRadar && selectedHour === 0 ? <><Radio size={12} />Radar {radarTime ?? "latest"} · RainViewer</> : <>{layerName(layer)} forecast · {formatSelectedTime(forecast.hours[selectedHour] ?? forecast.hours[0])}</>}</span></div>
+      <div className="pointer-events-none absolute left-3 top-3 z-[400] flex items-center gap-2 rounded-full border border-white/20 bg-[#101615]/82 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[.14em] text-white shadow-sm backdrop-blur-sm"><MapPin size={13} />{forecast.locationName} · {layer === "rain" && activeRadarFrame && selectedHour === 0 ? "Live radar" : "Forecast"}</div>
+      <div className="pointer-events-none absolute bottom-3 left-3 right-3 z-[400] flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/20 bg-[#101615]/82 px-3 py-2 shadow-sm backdrop-blur-sm">
+        <MapLegend layer={layer} />
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-white">{layer === "rain" && activeRadarFrame && selectedHour === 0 ? <><Radio size={12} />Radar {radarTime ?? "latest"} · RainViewer{radarFrames.length > 1 ? ` · ${radarFrameIndex + 1}/${radarFrames.length}` : ""}</> : <>{layerName(layer)} forecast · {formatSelectedTime(forecast.hours[selectedHour] ?? forecast.hours[0])}</>}</span>
+          {layer === "rain" && selectedHour === 0 && radarFrames.length > 1 && <button type="button" onClick={toggleRadarPlayback} className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/12 px-2.5 py-1.5 text-[10px] font-semibold text-white transition hover:bg-white/20" aria-label={radarPlaying ? "Pause radar animation" : "Play radar animation"} title={radarPlaying ? "Pause radar animation" : "Play radar animation"}>{radarPlaying ? <Pause size={12} /> : <Play size={12} />}{radarPlaying ? "Pause" : "Play"}</button>}
+        </div>
+      </div>
     </div>
   );
 }

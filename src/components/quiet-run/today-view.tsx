@@ -9,6 +9,7 @@ import { GlassCard, Metric, StatusPill, cn, fullDate, shortDate, typeColors, wor
 import { RainForecast } from "./rain-forecast";
 import { WeeklyOverview } from "./weekly-overview";
 import { WeeklyReview } from "./weekly-review";
+import { MobilityGuide } from "./mobility-guide";
 
 /** Weekly planning view: compare target distance with actual activity and resolve missed plans. */
 export function TodayView({ state, personId, today, weekDates, weekOffset, onWeekChange, onWorkoutUpdate }: { state: LocalState; personId: PersonId; today: string; weekDates: string[]; weekOffset: number; onWeekChange: (offset: number) => void; onWorkoutUpdate: (workoutId: string, updates: Partial<Pick<PlannedWorkout, "date" | "status" | "postponedFrom">>) => void }) {
@@ -51,6 +52,7 @@ export function TodayView({ state, personId, today, weekDates, weekOffset, onWee
   return (
     <div className="space-y-5">
       <WeeklyOverview weekDates={weekDates} activities={state.activities} workouts={state.workouts} personId={personId} plannedKm={plannedKm} actualKm={actualKm} />
+      <MobilityGuide />
       <section>
         <div className="mb-3 flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[.18em] text-[#85887f]">Week at a glance</p><h2 className="mt-1 text-xl font-medium">Monday — Sunday</h2><p className="mt-1 text-xs text-[#858880]">{shortDate(weekDates[0])} — {shortDate(weekDates[6])}</p></div><div className="flex items-center gap-1 rounded-2xl border border-white/70 bg-white/45 p-1"><button type="button" aria-label="Previous week" title="Previous week" onClick={() => onWeekChange(weekOffset - 1)} className="tap grid size-9 place-items-center rounded-xl text-[#687066] hover:bg-white/70"><ArrowLeft size={16} /></button><button type="button" onClick={() => onWeekChange(0)} disabled={weekOffset === 0} className="tap rounded-xl px-3 py-2 text-xs font-semibold text-[#586254] hover:bg-white/70 disabled:cursor-default disabled:opacity-40">Today</button><button type="button" aria-label="Next week" title="Next week" onClick={() => onWeekChange(weekOffset + 1)} className="tap grid size-9 place-items-center rounded-xl text-[#687066] hover:bg-white/70"><ArrowRight size={16} /></button></div></div>
         <div className="grid gap-3 sm:grid-cols-4 lg:grid-cols-7">

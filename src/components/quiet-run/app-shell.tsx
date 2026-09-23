@@ -10,7 +10,7 @@ import { findMatchingWorkout, isDuplicateActivity, isRouteRepair } from "@/lib/i
 import { getWorkoutStatus } from "@/lib/progress";
 import { initialState } from "@/lib/mock-data";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
-import { defaultRunnerProfile, loadRunnerProfile, saveRunnerProfile } from "@/lib/profile";
+import { defaultRunnerProfile, estimateMaxHrFromBirthDate, loadRunnerProfile, saveRunnerProfile } from "@/lib/profile";
 import { deleteWorkoutFromSupabase, loadCloudState, syncStateToSupabase, uploadShoeImage } from "@/lib/supabase-sync";
 import { downloadGpx } from "@/lib/download";
 import type { Activity, LocalState, MonthlyGoal, PlannedWorkout, RunnerProfile, Shoe } from "@/lib/types";
@@ -85,7 +85,11 @@ export function QuietRunApp() {
       const saved = window.localStorage.getItem("stridebook-profile-v1");
       if (!saved) return;
       try {
-        setProfile((current) => ({ ...current, ...(JSON.parse(saved) as Partial<RunnerProfile>) }));
+        setProfile((current) => {
+          const next = { ...current, ...(JSON.parse(saved) as Partial<RunnerProfile>) };
+          const estimatedMaxHr = estimateMaxHrFromBirthDate(next.birthDate);
+          return estimatedMaxHr ? { ...next, maxHr: estimatedMaxHr } : next;
+        });
       } catch {
         window.localStorage.removeItem("stridebook-profile-v1");
       }

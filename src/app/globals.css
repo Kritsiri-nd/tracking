@@ -163,6 +163,16 @@ body {
 .dashboard-theme textarea { color: var(--dash-text); border-color: rgba(255,255,255,.12) !important; background-color: rgba(255,255,255,.055) !important; }
 .dashboard-theme input::placeholder,
 .dashboard-theme textarea::placeholder { color: #70766e; }
+.dashboard-theme select { color-scheme: dark; }
+.dashboard-theme select option,
+.dashboard-theme select optgroup { color: var(--dash-text); background: #242824; }
+.dashboard-theme input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1) brightness(1.25); opacity: .85; }
+.dashboard-theme input:disabled,
+.dashboard-theme select:disabled,
+.dashboard-theme textarea:disabled { color: #858c82; background-color: rgba(255,255,255,.035) !important; }
+.dashboard-theme input:focus,
+.dashboard-theme select:focus,
+.dashboard-theme textarea:focus { border-color: rgba(166,255,0,.55) !important; box-shadow: 0 0 0 3px rgba(166,255,0,.1); }
 .dashboard-theme .route-map .leaflet-container { background: #202521; }
 .dashboard-theme .route-map .leaflet-control-attribution { background: rgba(20,22,21,.8); color: #9ca197; }
 .dashboard-theme .route-map .leaflet-control-attribution a { color: var(--dash-lime); }
@@ -213,6 +223,13 @@ body {
 .dashboard-theme-light input,
 .dashboard-theme-light select,
 .dashboard-theme-light textarea { color: #292d28; border-color: rgba(52,59,52,.10) !important; background-color: rgba(255,255,255,.55) !important; }
+.dashboard-theme-light select { color-scheme: light; }
+.dashboard-theme-light select option,
+.dashboard-theme-light select optgroup { color: #292d28; background: #ffffff; }
+.dashboard-theme-light input[type="date"]::-webkit-calendar-picker-indicator { opacity: .72; }
+.dashboard-theme-light input:focus,
+.dashboard-theme-light select:focus,
+.dashboard-theme-light textarea:focus { border-color: rgba(127,146,119,.8) !important; box-shadow: 0 0 0 3px rgba(127,146,119,.12); }
 .dashboard-theme-light .route-map .leaflet-container { background: #e8e6dc; }
 .dashboard-theme-light .route-map .leaflet-control-attribution { background: rgba(250,248,242,.8); color: #687066; }
 .dashboard-theme-light .route-map .leaflet-control-attribution a { color: #586254; }
