@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+:root {
+  --ivory: #f1ede3;
+  --paper: #faf8f2;
+  --ink: #292d28;
+  --muted: #74786f;
+  --line: rgba(75, 78, 70, 0.13);
+  --sage: #7f9277;
+  --sage-soft: #dce4d7;
+  --clay: #bd755c;
+  --clay-soft: #efddd5;
+  --gold: #c29a51;
+  --danger: #a75b55;
+}
+
+* { box-sizing: border-box; }
+html { background: var(--ivory); scroll-behavior: smooth; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 8% 4%, rgba(255,255,255,.95), transparent 31rem),
+    radial-gradient(circle at 90% 14%, rgba(127,146,119,.16), transparent 28rem),
+    linear-gradient(155deg, #f7f4ec 0%, #eee8dc 100%);
+  color: var(--ink);
+  font-family: "Noto Sans Thai", "Leelawadee UI", "Segoe UI", sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+button, input, select, textarea { font: inherit; }
+button { -webkit-tap-highlight-color: transparent; }
+
+.app-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: .2;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.08'/%3E%3C/svg%3E");
+}
+
+.glass {
+  background: rgba(255, 253, 248, .63);
+  border: 1px solid rgba(255,255,255,.73);
+  box-shadow: 0 18px 45px rgba(70, 62, 48, .08), inset 0 1px rgba(255,255,255,.45);
+  backdrop-filter: blur(22px) saturate(118%);
+  -webkit-backdrop-filter: blur(22px) saturate(118%);
+}
+
+.soft-card {
+  background: rgba(250, 248, 242, .78);
+  border: 1px solid var(--line);
+  box-shadow: 0 12px 30px rgba(70, 62, 48, .055);
+}
+
+.scrollbar-none { scrollbar-width: none; }
+.scrollbar-none::-webkit-scrollbar { display: none; }
+.safe-bottom { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+.tap { min-height: 44px; min-width: 44px; }
+
+.route-map .leaflet-container { font: inherit; background: #e8e6dc; }
+.route-map .leaflet-tile { filter: saturate(.72) sepia(.08) brightness(1.06); }
+.route-map .leaflet-control-attribution { border-radius: 10px 0 0; background: rgba(250, 248, 242, .8); color: #687066; font-size: 9px; }
+.route-map .leaflet-control-attribution a { color: #586254; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}

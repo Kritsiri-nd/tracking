@@ -1,0 +1,108 @@
+"use client";
+
+import { ArrowLeft, ArrowRight, Check, Pencil, Plus, Trash2, X } from "lucide-react";
+import { FormEvent, useState } from "react";
+import { distanceForActivities, getWorkoutStatus } from "@/lib/progress";
+import type { LocalState, PersonId, PlannedWorkout, WorkoutType } from "@/lib/types";
+import { GlassCard, cn, fullDate, getMonthCalendarDates, monthKey, monthLabel, shiftMonthKey, typeColors, workoutLabels } from "./shared";
+
+/** Monthly planning surface with desktop calendar and mobile agenda layouts. */
+export function CalendarView({ state, personId, today, onAdd, onUpdate, onDelete }: { state: LocalState; personId: PersonId; today: string; onAdd: (workout: PlannedWorkout) => void; onUpdate: (workoutId: string, updates: Partial<PlannedWorkout>) => void; onDelete: (workoutId: string) => Promise<void> }) {
+  type PlanForm = { date: string; type: WorkoutType; title: string; distance: string; duration: string; paceMin: string; paceMax: string; note: string };
+  type PlanFilter = "all" | "planned" | "completed" | "missed";
+  const [viewMonth, setViewMonth] = useState(monthKey(today));
+  const [planFilter, setPlanFilter] = useState<PlanFilter>("all");
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingWorkout, setEditingWorkout] = useState<PlannedWorkout>();
+  const [deleteTarget, setDeleteTarget] = useState<PlannedWorkout>();
+  const [deleteError, setDeleteError] = useState<string>();
+  const [formError, setFormError] = useState<string>();
+  const [deleting, setDeleting] = useState(false);
+  const emptyForm = (date: string): PlanForm => ({ date, type: "easy", title: "", distance: "5", duration: "", paceMin: "", paceMax: "", note: "" });
+  const [form, setForm] = useState<PlanForm>(() => emptyForm(today));
+  const monthDates = getMonthCalendarDates(viewMonth);
+  const monthWorkouts = state.workouts.filter((workout) => workout.personId === personId && monthKey(workout.date) === viewMonth);
+  const filterLabels: Record<PlanFilter, string> = { all: "All", planned: "Planned", completed: "Completed", missed: "Missed" };
+  function workoutActivity(workout: PlannedWorkout) {
+    return state.activities.find((item) => item.id === workout.activityId) ?? state.activities.find((item) => item.personId === personId && item.date === workout.date && item.type === workout.type);
+  }
+  function matchesFilter(workout: PlannedWorkout) {
+    if (planFilter === "all") return true;
+    const status = getWorkoutStatus(workout, workoutActivity(workout));
+    return planFilter === "completed" ? status === "completed" || status === "exceeded" : planFilter === "missed" ? status === "missed" : status === "planned" || status === "partial";
+  }
+  const visibleMonthWorkouts = monthWorkouts.filter(matchesFilter);
+  const monthDistance = monthWorkouts.reduce((sum, workout) => sum + (workout.distanceKm ?? 0), 0);
+  const monthActivities = state.activities.filter((activity) => activity.personId === personId && monthKey(activity.date) === viewMonth);
+  const dayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+  function openNewPlan(date = dateForMonth(viewMonth)) {
+    setEditingWorkout(undefined);
+    setDeleteTarget(undefined);
+    setFormError(undefined);
+    setForm(emptyForm(date));
+    setFormOpen(true);
+  }
+
+  function openEditPlan(workout: PlannedWorkout) {
+    setEditingWorkout(workout);
+    setDeleteTarget(undefined);
+    setDeleteError(undefined);
+    setFormError(undefined);
+    setForm({ date: workout.date, type: workout.type, title: workout.title, distance: workout.distanceKm ? String(workout.distanceKm) : "", duration: workout.durationMin ? String(workout.durationMin) : "", paceMin: workout.paceMin ? String(workout.paceMin) : "", paceMax: workout.paceMax ? String(workout.paceMax) : "", note: workout.note ?? "" });
+    setFormOpen(true);
+  }
+
+  function dateForMonth(month: string) {
+    return month + "-01";
+  }
+
+  function submitPlan(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const distance = Number(form.distance);
+    const duration = Number(form.duration);
+    const paceMin = Number(form.paceMin);
+    const paceMax = Number(form.paceMax);
+    if (!form.date) { setFormError("Choose a date."); return; }
+    if (form.type !== "rest" && (!Number.isFinite(distance) || distance <= 0)) { setFormError("Enter a distance greater than 0 km."); return; }
+    const updates: Partial<PlannedWorkout> = { date: form.date, type: form.type, title: form.title.trim() || workoutLabels[form.type], distanceKm: form.type === "rest" ? undefined : distance, durationMin: Number.isFinite(duration) && duration > 0 ? duration : undefined, paceMin: Number.isFinite(paceMin) && paceMin > 0 ? paceMin : undefined, paceMax: Number.isFinite(paceMax) && paceMax > 0 ? paceMax : undefined, note: form.note.trim() || undefined };
+    if (editingWorkout) onUpdate(editingWorkout.id, updates);
+    else onAdd({ id: "w-" + Date.now(), personId, status: "planned", ...updates } as PlannedWorkout);
+    setViewMonth(monthKey(form.date));
+    setFormOpen(false);
+    setFormError(undefined);
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setDeleteError(undefined);
+    try {
+      await onDelete(deleteTarget.id);
+      setFormOpen(false);
+      setDeleteTarget(undefined);
+      setEditingWorkout(undefined);
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : "Could not delete this plan.");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-sm text-[#7d8078]">Plan your month at a glance</p><h1 className="mt-1 text-[34px] font-medium tracking-[-.055em]">Training plan</h1></div><button type="button" onClick={() => openNewPlan()} className="tap inline-flex items-center gap-2 rounded-2xl bg-[#343b34] px-4 text-sm font-semibold text-white"><Plus size={18} />New plan</button></div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><div className="rounded-2xl border border-white/75 bg-white/48 p-4"><div className="text-xs text-[#858880]">Planned sessions</div><div className="mt-1 text-2xl font-semibold">{monthWorkouts.length}</div></div><div className="rounded-2xl border border-white/75 bg-white/48 p-4"><div className="text-xs text-[#858880]">Planned distance</div><div className="mt-1 text-2xl font-semibold">{monthDistance.toFixed(1)}<span className="ml-1 text-xs font-normal text-[#858880]">km</span></div></div><div className="rounded-2xl border border-white/75 bg-white/48 p-4"><div className="text-xs text-[#858880]">Actual distance</div><div className="mt-1 text-2xl font-semibold">{distanceForActivities(monthActivities).toFixed(1)}<span className="ml-1 text-xs font-normal text-[#858880]">km</span></div></div><div className="rounded-2xl border border-[#7f9277]/20 bg-[#dce4d7]/45 p-4"><div className="text-xs text-[#687362]">Today</div><div className="mt-1 text-sm font-semibold text-[#53644e]">{fullDate(today)}</div></div></div>
+      <GlassCard className="overflow-hidden p-4 sm:p-6">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[.18em] text-[#85887f]">Monthly calendar</p><h2 className="mt-1 text-2xl font-medium">{monthLabel(viewMonth)}</h2><p className="mt-1 text-sm text-[#777b73]">Click any plan to edit it. On mobile, days become an easy-to-scan agenda.</p></div><div className="flex items-center gap-1 rounded-2xl border border-white/70 bg-white/45 p-1"><button type="button" aria-label="Previous month" title="Previous month" onClick={() => setViewMonth(shiftMonthKey(viewMonth, -1))} className="tap grid size-9 place-items-center rounded-xl text-[#687066] hover:bg-white/70"><ArrowLeft size={16} /></button><button type="button" onClick={() => setViewMonth(monthKey(today))} className="tap rounded-xl px-3 py-2 text-xs font-semibold text-[#586254] hover:bg-white/70">This month</button><button type="button" aria-label="Next month" title="Next month" onClick={() => setViewMonth(shiftMonthKey(viewMonth, 1))} className="tap grid size-9 place-items-center rounded-xl text-[#687066] hover:bg-white/70"><ArrowRight size={16} /></button></div></div>
+        <div className="mb-4 flex flex-wrap items-center gap-2"><span className="mr-1 text-xs font-semibold uppercase tracking-[.14em] text-[#858880]">Show</span>{(Object.keys(filterLabels) as PlanFilter[]).map((filter) => <button key={filter} type="button" onClick={() => setPlanFilter(filter)} className={cn("tap rounded-full px-3 py-1.5 text-xs font-semibold", planFilter === filter ? "bg-[#343b34] text-white" : "bg-white/55 text-[#687066]")}>{filterLabels[filter]}</button>)}</div>
+         <div className="hidden overflow-x-auto pb-1 lg:block"><div className="min-w-[700px]"><div className="grid grid-cols-7 border-b border-[#343b34]/8 pb-2">{dayLabels.map((label) => <div key={label} className="px-2 text-center text-[11px] font-semibold uppercase tracking-[.14em] text-[#858880]">{label}</div>)}</div><div className="grid grid-cols-7 overflow-hidden rounded-2xl border-l border-t border-[#343b34]/8">{monthDates.map((date) => { const inMonth = monthKey(date) === viewMonth; const isToday = date === today; const workouts = visibleMonthWorkouts.filter((workout) => workout.date === date); return <div key={date} className={cn("min-h-[132px] border-b border-r border-[#343b34]/8 bg-white/25 p-2", !inMonth && "bg-[#e9e6dc]/25 opacity-50", isToday && "bg-[#dce4d7]/45") }><div className="flex items-center justify-between gap-1"><span className={cn("grid size-7 place-items-center rounded-full text-xs font-semibold", isToday ? "bg-[#7f9277] text-white" : "text-[#62685f]")}>{date.slice(8, 10).replace(/^0/, "")}</span>{inMonth && <button type="button" aria-label={`Add plan on ${fullDate(date)}`} title="Add plan" onClick={() => openNewPlan(date)} className="tap grid size-7 place-items-center rounded-full text-[#7a8275] hover:bg-white/80"><Plus size={14} /></button>}</div><div className="mt-2 space-y-1.5">{workouts.map((workout) => { const activity = workoutActivity(workout); const status = getWorkoutStatus(workout, activity); return <button type="button" key={workout.id} onClick={() => openEditPlan(workout)} className="group w-full rounded-xl bg-white/72 p-2 text-left shadow-[0_5px_15px_rgba(70,62,48,.05)] transition hover:bg-white hover:shadow-sm"><div className="flex items-start gap-1.5"><span className="mt-0.5 h-7 w-1 rounded-full" style={{ backgroundColor: typeColors[workout.type] }} /><span className="min-w-0 flex-1"><span className="block truncate text-[11px] font-semibold text-[#343b34]">{workout.title}</span><span className="mt-0.5 block truncate text-[10px] text-[#858880]">{workout.distanceKm ? `${workout.distanceKm} km` : workoutLabels[workout.type]}</span></span>{activity ? <Check size={13} className="shrink-0 text-[#7f9277]" /> : <Pencil size={12} className="shrink-0 text-[#a0a39a] opacity-0 transition group-hover:opacity-100" />}</div><span className={cn("mt-1 inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-semibold", status === "completed" || status === "exceeded" ? "bg-[#dce4d7] text-[#53644e]" : status === "missed" ? "bg-[#ead9d7] text-[#92514d]" : "bg-[#f0eee7] text-[#777b73]")}>{status === "completed" || status === "exceeded" ? "Done" : status === "missed" ? "Missed" : "Planned"}</span></button>; })}</div>{inMonth && !workouts.length && <button type="button" onClick={() => openNewPlan(date)} className="mt-3 w-full rounded-xl border border-dashed border-[#343b34]/10 py-2 text-[10px] font-medium text-[#a0a39a] hover:bg-white/55">Add plan</button>}</div>; })}</div></div></div>
+         <div className="space-y-2 lg:hidden">{monthDates.filter((date) => monthKey(date) === viewMonth).map((date) => { const isToday = date === today; const workouts = visibleMonthWorkouts.filter((workout) => workout.date === date); const allWorkouts = monthWorkouts.filter((workout) => workout.date === date); return <article key={date} className={cn("rounded-2xl border p-3", isToday ? "border-[#7f9277] bg-[#dce4d7]/40" : "border-white/70 bg-white/42")}><div className="flex items-center justify-between"><div><div className="text-xs font-semibold uppercase tracking-[.14em] text-[#858880]">{fullDate(date)}</div>{isToday && <span className="mt-1 inline-flex rounded-full bg-[#7f9277] px-2 py-0.5 text-[10px] font-semibold text-white">Today</span>}</div><button type="button" onClick={() => openNewPlan(date)} className="tap rounded-full bg-[#343b34] px-3 py-1.5 text-[11px] font-semibold text-white">Add plan</button></div><div className="mt-3 space-y-2">{workouts.length ? workouts.map((workout) => { const activity = workoutActivity(workout); const status = getWorkoutStatus(workout, activity); return <button type="button" key={workout.id} onClick={() => openEditPlan(workout)} className="flex w-full items-center gap-3 rounded-xl bg-white/70 p-3 text-left"><span className="h-9 w-1 rounded-full" style={{ backgroundColor: typeColors[workout.type] }} /><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{workout.title}</span><span className="mt-1 block text-xs text-[#858880]">{workoutLabels[workout.type]}{workout.distanceKm ? ` · ${workout.distanceKm} km` : ""}</span></span>{activity ? <Check size={16} className="text-[#7f9277]" /> : <span className="rounded-full bg-[#f0eee7] px-2 py-1 text-[10px] font-semibold text-[#777b73]">{status === "missed" ? "Missed" : "Planned"}</span>}</button>; }) : <p className="py-2 text-xs text-[#9a9d95]">{allWorkouts.length ? "No plans match this filter." : "No plans yet."}</p>}</div></article>; })}</div>
+        <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-[#777b73]"><span className="font-semibold text-[#62685f]">Legend</span>{(Object.keys(workoutLabels) as WorkoutType[]).filter((type) => type !== "rest").slice(0, 5).map((type) => <span key={type} className="inline-flex items-center gap-1.5"><i className="size-2 rounded-full" style={{ backgroundColor: typeColors[type] }} />{workoutLabels[type]}</span>)}</div>
+      </GlassCard>
+      {formOpen && <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#293029]/30 p-0 backdrop-blur-sm sm:items-center sm:p-5" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setFormOpen(false); }}><GlassCard className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-b-none rounded-t-[28px] p-5 sm:rounded-[28px] sm:p-6" role="dialog" aria-modal="true" aria-label={editingWorkout ? "Edit workout plan" : "Add workout plan"}><div className="mb-5 flex items-start justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-[.18em] text-[#85887f]">{editingWorkout ? "Edit plan" : "New plan"}</p><h2 className="mt-1 text-2xl font-medium tracking-[-.045em]">{editingWorkout ? editingWorkout.title : "Plan a workout"}</h2></div><button type="button" aria-label="Close plan form" title="Close plan form" onClick={() => setFormOpen(false)} className="tap grid size-9 place-items-center rounded-2xl bg-white/55"><X size={18} /></button></div><form onSubmit={submitPlan} className="space-y-4"><div className="grid gap-3 sm:grid-cols-2"><label className="block text-xs font-medium text-[#72766d]">Date<input type="date" required value={form.date} onChange={(event) => setForm((current) => ({ ...current, date: event.target.value }))} className="mt-1.5 h-12 w-full rounded-2xl border border-[#343b34]/10 bg-white/55 px-3 text-sm outline-none focus:border-[#7f9277]" /></label><label className="block text-xs font-medium text-[#72766d]">Workout type<select value={form.type} onChange={(event) => setForm((current) => ({ ...current, type: event.target.value as WorkoutType }))} className="mt-1.5 h-12 w-full rounded-2xl border border-[#343b34]/10 bg-white/55 px-3 text-sm outline-none focus:border-[#7f9277]">{Object.entries(workoutLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label></div><label className="block text-xs font-medium text-[#72766d]">Plan name<input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} placeholder="Easy morning" className="mt-1.5 h-12 w-full rounded-2xl border border-[#343b34]/10 bg-white/55 px-3 text-sm outline-none focus:border-[#7f9277]" /></label><div className="grid gap-3 sm:grid-cols-2"><label className="block text-xs font-medium text-[#72766d]">Distance (km)<input type="number" min="0.1" step="0.1" disabled={form.type === "rest"} value={form.distance} onChange={(event) => setForm((current) => ({ ...current, distance: event.target.value }))} className="mt-1.5 h-12 w-full rounded-2xl border border-[#343b34]/10 bg-white/55 px-3 text-sm outline-none focus:border-[#7f9277] disabled:opacity-40" /></label><label className="block text-xs font-medium text-[#72766d]">Duration (minutes)<input type="number" min="1" step="1" value={form.duration} onChange={(event) => setForm((current) => ({ ...current, duration: event.target.value }))} placeholder="40" className="mt-1.5 h-12 w-full rounded-2xl border border-[#343b34]/10 bg-white/55 px-3 text-sm outline-none focus:border-[#7f9277]" /></label></div><div className="grid gap-3 sm:grid-cols-2"><label className="block text-xs font-medium text-[#72766d]">Pace from (min/km)<input type="number" min="1" step="0.1" value={form.paceMin} onChange={(event) => setForm((current) => ({ ...current, paceMin: event.target.value }))} placeholder="6.5" className="mt-1.5 h-12 w-full rounded-2xl border border-[#343b34]/10 bg-white/55 px-3 text-sm outline-none focus:border-[#7f9277]" /></label><label className="block text-xs font-medium text-[#72766d]">Pace to (min/km)<input type="number" min="1" step="0.1" value={form.paceMax} onChange={(event) => setForm((current) => ({ ...current, paceMax: event.target.value }))} placeholder="7.2" className="mt-1.5 h-12 w-full rounded-2xl border border-[#343b34]/10 bg-white/55 px-3 text-sm outline-none focus:border-[#7f9277]" /></label></div><label className="block text-xs font-medium text-[#72766d]">Notes<textarea rows={3} value={form.note} onChange={(event) => setForm((current) => ({ ...current, note: event.target.value }))} placeholder="Keep it conversational" className="mt-1.5 w-full resize-none rounded-2xl border border-[#343b34]/10 bg-white/55 px-3 py-3 text-sm outline-none focus:border-[#7f9277]" /></label>{formError && <p role="alert" className="rounded-2xl bg-[#ead9d7]/70 px-3 py-2 text-xs font-medium text-[#92514d]">{formError}</p>}<div className="flex flex-wrap gap-2 pt-1"><button type="button" onClick={() => setFormOpen(false)} className="tap flex-1 rounded-2xl border border-[#343b34]/12 bg-white/45 text-sm font-semibold">Cancel</button><button type="submit" className="tap flex-1 rounded-2xl bg-[#343b34] text-sm font-semibold text-white">{editingWorkout ? "Save changes" : "Add plan"}</button></div></form>{editingWorkout && <div className="mt-5 border-t border-[#343b34]/8 pt-5">{deleteTarget ? <div className="rounded-2xl bg-[#ead9d7]/65 p-4"><div className="text-sm font-semibold text-[#92514d]">Delete this plan?</div><p className="mt-1 text-xs leading-5 text-[#92514d]/80">This removes the plan from the calendar and Supabase.</p>{deleteError && <p role="alert" className="mt-2 text-xs font-semibold text-[#92514d]">{deleteError}</p>}<div className="mt-3 grid grid-cols-2 gap-2"><button type="button" onClick={() => setDeleteTarget(undefined)} className="tap rounded-2xl border border-[#92514d]/20 bg-white/45 text-sm font-semibold text-[#92514d]">Keep plan</button><button type="button" disabled={deleting} onClick={() => void confirmDelete()} className="tap rounded-2xl bg-[#92514d] text-sm font-semibold text-white disabled:opacity-60">{deleting ? "Deleting…" : "Delete plan"}</button></div></div> : <button type="button" onClick={() => setDeleteTarget(editingWorkout)} className="tap inline-flex items-center gap-2 rounded-2xl border border-[#a75b55]/25 bg-[#ead9d7]/55 px-4 text-sm font-semibold text-[#92514d]"><Trash2 size={16} />Delete plan</button>}</div>}</GlassCard></div>}
+    </div>
+  );
+}
+
+
