@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { getBangkokWeekDates, shiftBangkokDateKey } from "@/lib/date";
 import { distanceForActivities, getWorkoutStatus } from "@/lib/progress";
 import type { LocalState, PersonId, PlannedWorkout } from "@/lib/types";
-import { GlassCard, Metric, StatusPill, cn, fullDate, shortDate, typeColors, workoutLabels } from "./shared";
+import { GlassCard, Metric, PageIntro, StatusPill, cn, fullDate, shortDate, typeColors, workoutLabels } from "./shared";
 import { RainForecast } from "./rain-forecast";
 import { WeeklyOverview } from "./weekly-overview";
 import { WeeklyReview } from "./weekly-review";
@@ -51,6 +51,7 @@ export function TodayView({ state, personId, today, weekDates, weekOffset, onWee
 
   return (
     <div className="space-y-5">
+      <PageIntro eyebrow="Today · Bangkok time" title="Keep your week moving." description="See what is next, what you completed, and when the weather is worth checking." />
       <WeeklyOverview weekDates={weekDates} activities={state.activities} workouts={state.workouts} personId={personId} plannedKm={plannedKm} actualKm={actualKm} />
       <MobilityGuide />
       <section>

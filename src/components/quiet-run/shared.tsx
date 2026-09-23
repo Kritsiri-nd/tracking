@@ -62,6 +62,20 @@ export function GlassCard({ children, className, ...props }: HTMLAttributes<HTML
   return <section {...props} className={cn("glass rounded-[28px]", className)}>{children}</section>;
 }
 
+/** Consistent page opening: one eyebrow, one clear title, and one optional action. */
+export function PageIntro({ eyebrow, title, description, action }: { eyebrow: string; title: string; description?: string; action?: ReactNode }) {
+  return (
+    <div className="dashboard-page-intro">
+      <div className="min-w-0">
+        <p className="dashboard-page-eyebrow">{eyebrow}</p>
+        <h1 className="dashboard-page-title">{title}</h1>
+        {description && <p className="dashboard-page-description">{description}</p>}
+      </div>
+      {action && <div className="dashboard-page-action">{action}</div>}
+    </div>
+  );
+}
+
 export function StatusPill({ status }: { status: WorkoutStatus }) {
   const classes = {
     planned: "bg-stone-100 text-stone-600",
@@ -70,14 +84,14 @@ export function StatusPill({ status }: { status: WorkoutStatus }) {
     exceeded: "bg-[#efddd5] text-[#925844]",
     missed: "bg-[#ead9d7] text-[#92514d]",
   }[status];
-  return <span className={cn("inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold", classes)}>{statusLabels[status]}</span>;
+  return <span className={cn("dashboard-status-pill inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold", classes)}>{statusLabels[status]}</span>;
 }
 
 export function Metric({ label, value, suffix, icon: Icon }: { label: string; value: string; suffix?: string; icon?: LucideIcon }) {
   return (
-    <div className="rounded-2xl border border-white/65 bg-white/42 p-3">
-      <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[.14em] text-[#84877f]">{Icon && <Icon size={13} />}{label}</div>
-      <div className="text-xl font-semibold tracking-[-.04em] text-[#30342f]">{value}<span className="ml-1 text-xs font-medium tracking-normal text-[#858880]">{suffix}</span></div>
+    <div className="dashboard-metric-card rounded-2xl border border-white/65 bg-white/42 p-3">
+      <div className="dashboard-metric-label mb-2 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[.14em] text-[#84877f]">{Icon && <Icon size={13} />}{label}</div>
+      <div className="dashboard-metric-value text-xl font-semibold tracking-[-.04em] text-[#30342f]">{value}<span className="ml-1 text-xs font-medium tracking-normal text-[#858880]">{suffix}</span></div>
     </div>
   );
 }

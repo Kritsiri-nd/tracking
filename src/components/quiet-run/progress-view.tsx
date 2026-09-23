@@ -6,7 +6,7 @@ import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Line, LineChart, R
 import { monthlyStatistics, summarizeActivities, yearStatistics } from "@/lib/statistics";
 import { formatDuration, formatPace, paceMinutesPerKm } from "@/lib/progress";
 import type { Activity, LocalState, MonthlyGoal, PersonId, WorkoutType } from "@/lib/types";
-import { GlassCard, Metric, cn, monthKey, monthLabel, shortDate, typeColors, workoutLabels } from "./shared";
+import { GlassCard, Metric, PageIntro, cn, monthKey, monthLabel, shortDate, typeColors, workoutLabels } from "./shared";
 
 type ProgressSection = "overview" | "goals" | "statistics";
 type ActivityRange = "recent" | "month" | "year" | "all";
@@ -82,7 +82,7 @@ export function ProgressView({ state, personId, today, onGoalSave, onOpenActivit
 
   return (
     <div className="space-y-5">
-      <div><p className="text-sm text-[#7d8078]">A gentle view of the numbers</p><h1 className="mt-1 text-[34px] font-medium tracking-[-.055em]">Progress</h1></div>
+      <PageIntro eyebrow="Training intelligence" title="Progress" description="Turn every run into a clearer picture of your consistency, effort, and direction." />
 
       <div role="tablist" aria-label="Progress sections" className="flex w-full gap-1 overflow-x-auto rounded-2xl border border-white/70 bg-white/45 p-1">
         {(["overview", "goals", "statistics"] as ProgressSection[]).map((item) => <button key={item} type="button" role="tab" aria-selected={section === item} onClick={() => setSection(item)} className={cn("tap min-w-24 flex-1 rounded-xl px-3 py-2 text-xs font-semibold capitalize", section === item ? "bg-[#343b34] text-white" : "text-[#687066]")}>{item}</button>)}

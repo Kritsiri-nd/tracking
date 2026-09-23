@@ -3,7 +3,7 @@
 import { Footprints, PackageOpen, Route, X } from "lucide-react";
 import { FormEvent, useState } from "react";
 import type { LocalState, PersonId, Shoe } from "@/lib/types";
-import { GlassCard, Metric } from "./shared";
+import { GlassCard, Metric, PageIntro } from "./shared";
 
 /** Gear management for active running shoes, mileage, photos, and retirement. */
 export function GearView({ state, personId, onShoeAdd, onShoeUpdate, onShoeRetire, onShoeImageChange }: { state: LocalState; personId: PersonId; onShoeAdd: (shoe: Shoe, imageFile?: File) => Promise<void>; onShoeUpdate: (shoeId: string, updates: Partial<Shoe>) => Promise<void>; onShoeRetire: (shoeId: string) => Promise<void>; onShoeImageChange: (shoeId: string, file: File) => Promise<void> }) {
@@ -72,7 +72,7 @@ export function GearView({ state, personId, onShoeAdd, onShoeUpdate, onShoeRetir
 
   return (
     <div className="space-y-5">
-      <div><p className="text-sm text-[#7d8078]">Shoes and equipment</p><h1 className="mt-1 text-[34px] font-medium tracking-[-.055em]">Gear</h1><p className="mt-2 max-w-lg text-sm leading-6 text-[#73776f]">Keep your running shoes in one place and see how much distance each pair has covered.</p></div>
+      <PageIntro eyebrow="Shoes and equipment" title="Gear" description="Keep your running shoes in one place and see how much distance each pair has covered." />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3"><Metric label="Active shoes" value={String(shoes.length)} icon={PackageOpen} /><Metric label="Distance logged" value={totalDistance.toFixed(1)} suffix="km" icon={Route} /><Metric label="With photos" value={String(shoes.filter((shoe) => Boolean(shoe.imageUrl)).length)} icon={Footprints} /></div>
       <GlassCard className="p-5 sm:p-6">
         <div className="mb-5 flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[.18em] text-[#85887f]">Shoe tracking</p><h2 className="mt-1 text-xl font-medium">Running shoes</h2></div><PackageOpen className="text-[#bd755c]" size={21} /></div>
@@ -83,5 +83,4 @@ export function GearView({ state, personId, onShoeAdd, onShoeUpdate, onShoeRetir
     </div>
   );
 }
-
 

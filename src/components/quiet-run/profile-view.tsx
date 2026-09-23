@@ -4,7 +4,7 @@ import { ArrowLeft, LogOut, PackageOpen, Save, UserRound } from "lucide-react";
 import { useState } from "react";
 import { ageFromBirthDate, estimateMaxHrFromBirthDate } from "@/lib/profile";
 import type { RunnerProfile } from "@/lib/types";
-import { GlassCard } from "./shared";
+import { GlassCard, PageIntro } from "./shared";
 
 type ProfileViewProps = {
   profile: RunnerProfile;
@@ -65,7 +65,7 @@ export function ProfileView({ profile, onBack, onOpenGear, onSave, onSignOut }: 
         {onSignOut && <button type="button" onClick={onSignOut} className="tap flex items-center gap-2 rounded-full bg-[#ead9d7]/70 px-4 py-2 text-sm font-semibold text-[#874e49]"><LogOut size={16} />Sign out</button>}
       </div>
 
-      <div><p className="text-sm text-[#7d8078]">Account settings</p><h1 className="mt-1 text-[34px] font-medium tracking-[-.055em]">Your profile</h1><p className="mt-1 text-sm text-[#777b73]">Set the basics Stridebook uses to understand your training.</p></div>
+      <PageIntro eyebrow="Account settings" title="Your profile" description="Set the basics Stridebook uses to understand your training." />
 
       <form onSubmit={submit} className="grid gap-5 lg:grid-cols-[1fr_.8fr]">
         <GlassCard className="p-5 sm:p-6">
