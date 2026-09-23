@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, LogOut, Save, UserRound } from "lucide-react";
+import { ArrowLeft, LogOut, PackageOpen, Save, UserRound } from "lucide-react";
 import { useState } from "react";
 import type { RunnerProfile } from "@/lib/types";
 import { GlassCard } from "./shared";
@@ -8,6 +8,7 @@ import { GlassCard } from "./shared";
 type ProfileViewProps = {
   profile: RunnerProfile;
   onBack: () => void;
+  onOpenGear: () => void;
   onSave: (profile: RunnerProfile) => Promise<void>;
   onSignOut?: () => void;
 };
@@ -18,7 +19,7 @@ function numberOrUndefined(value: string) {
 }
 
 /** Account settings and runner baselines used by activity analysis. */
-export function ProfileView({ profile, onBack, onSave, onSignOut }: ProfileViewProps) {
+export function ProfileView({ profile, onBack, onOpenGear, onSave, onSignOut }: ProfileViewProps) {
   const [form, setForm] = useState(profile);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -41,7 +42,7 @@ export function ProfileView({ profile, onBack, onSave, onSignOut }: ProfileViewP
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3"><button type="button" onClick={onBack} className="tap flex items-center gap-2 rounded-full bg-white/45 px-4 py-2 text-sm font-semibold"><ArrowLeft size={17} />Back</button>{onSignOut && <button type="button" onClick={onSignOut} className="tap flex items-center gap-2 rounded-full bg-[#ead9d7]/70 px-4 py-2 text-sm font-semibold text-[#874e49]"><LogOut size={16} />Sign out</button>}</div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap items-center gap-2"><button type="button" onClick={onBack} className="tap flex items-center gap-2 rounded-full bg-white/45 px-4 py-2 text-sm font-semibold"><ArrowLeft size={17} />Back</button><button type="button" onClick={onOpenGear} className="tap flex items-center gap-2 rounded-full bg-white/45 px-4 py-2 text-sm font-semibold"><PackageOpen size={16} />Gear</button></div>{onSignOut && <button type="button" onClick={onSignOut} className="tap flex items-center gap-2 rounded-full bg-[#ead9d7]/70 px-4 py-2 text-sm font-semibold text-[#874e49]"><LogOut size={16} />Sign out</button>}</div>
       <div><p className="text-sm text-[#7d8078]">Account settings</p><h1 className="mt-1 text-[34px] font-medium tracking-[-.055em]">Your profile</h1><p className="mt-1 text-sm text-[#777b73]">Set the basics Stridebook uses to understand your training.</p></div>
       <form onSubmit={submit} className="grid gap-5 lg:grid-cols-[1fr_.8fr]">
         <GlassCard className="p-5 sm:p-6"><div className="flex items-center gap-3"><div className="grid size-12 place-items-center rounded-2xl bg-[#dce4d7] text-[#53644e]"><UserRound size={22} /></div><div><p className="text-xs font-semibold uppercase tracking-[.16em] text-[#85887f]">Runner identity</p><h2 className="mt-1 text-lg font-medium">About you</h2></div></div><div className="mt-6 space-y-4"><label className="block text-sm font-semibold text-[#5e665c]">Username<input value={form.username} readOnly className="mt-2 h-11 w-full rounded-2xl border border-[#343b34]/8 bg-[#f1f3ec]/70 px-3 text-sm text-[#858880] outline-none" /></label><label className="block text-sm font-semibold text-[#5e665c]">Display name<input value={form.displayName} onChange={(event) => setForm((current) => ({ ...current, displayName: event.target.value }))} className="mt-2 h-11 w-full rounded-2xl border border-[#343b34]/10 bg-white/65 px-3 text-sm outline-none focus:border-[#7f9277]" /></label><div className="grid gap-4 sm:grid-cols-2"><label className="block text-sm font-semibold text-[#5e665c]">Date of birth<input type="date" value={form.birthDate ?? ""} onChange={(event) => setForm((current) => ({ ...current, birthDate: event.target.value || undefined }))} className="mt-2 h-11 w-full rounded-2xl border border-[#343b34]/10 bg-white/65 px-3 text-sm outline-none focus:border-[#7f9277]" /></label><label className="block text-sm font-semibold text-[#5e665c]">Running goal<input value={form.runningGoal ?? ""} onChange={(event) => setForm((current) => ({ ...current, runningGoal: event.target.value || undefined }))} placeholder="Build a steady base" className="mt-2 h-11 w-full rounded-2xl border border-[#343b34]/10 bg-white/65 px-3 text-sm outline-none focus:border-[#7f9277]" /></label></div></div></GlassCard>

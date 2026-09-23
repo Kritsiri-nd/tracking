@@ -24,19 +24,29 @@ import { TodayView } from "./today-view";
 import { CalendarView } from "./plan-view";
 import { UploadView } from "./import-view";
 import { ProfileView } from "./profile-view";
-import { Tab } from "./shared";
+import { cn, Tab } from "./shared";
+
+const validTabs: Tab[] = ["today", "calendar", "upload", "progress", "gear"];
+
+function tabFromUrl(): Tab {
+  if (typeof window === "undefined") return "today";
+  const value = new URLSearchParams(window.location.search).get("tab") as Tab | null;
+  return value && validTabs.includes(value) ? value : "today";
+}
 
 export function QuietRunApp() {
   const [state, setState] = useState<LocalState>(initialState);
   const [profile, setProfile] = useState<RunnerProfile>(() => defaultRunnerProfile());
-  const [tab, setTab] = useState<Tab>("today");
-  const [showProfile, setShowProfile] = useState(false);
+  const [tab, setTab] = useState<Tab>(tabFromUrl);
+  const [themeMode, setThemeMode] = useState<"dark" | "light">("dark");
+  const [showProfile, setShowProfile] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("profile") === "1");
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState<Session | null | undefined>(() => isSupabaseConfigured() ? undefined : null);
   const [cloudReady, setCloudReady] = useState(() => !isSupabaseConfigured());
-  const [cloudStatus, setCloudStatus] = useState<"local" | "loading" | "connected" | "error">("local");
+  const [cloudStatus, setCloudStatus] = useState<"local" | "loading" | "saving" | "connected" | "error">("local");
+  const [syncRevision, setSyncRevision] = useState(0);
   const cloudBootstrapped = useRef(false);
-  const [preview, setPreview] = useState<Activity>();
+  const [previews, setPreviews] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploadError, setUploadError] = useState<string>();
   const [activeActivity, setActiveActivity] = useState<Activity>();
@@ -84,6 +94,18 @@ export function QuietRunApp() {
   }, []);
 
   useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const savedTheme = window.localStorage.getItem("stridebook-theme-v1");
+      if (savedTheme === "light") setThemeMode("light");
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  useEffect(() => {
+    if (ready) window.localStorage.setItem("stridebook-theme-v1", themeMode);
+  }, [ready, themeMode]);
+
+  useEffect(() => {
     if (!authUser) return;
     void loadRunnerProfile(authUser).then(setProfile).catch(() => setProfile((current) => ({ ...current, id: authUser.id, email: authUser.email ?? current.email, displayName: current.displayName || defaultRunnerProfile(authUser).displayName })));
   }, [authUser]);
@@ -128,13 +150,26 @@ export function QuietRunApp() {
       setCloudReady(true);
     });
   }, [authUserId, ready, state]);
+  useEffect(() => {
+    const handlePopState = () => {
+      setTab(tabFromUrl());
+      setShowProfile(new URLSearchParams(window.location.search).get("profile") === "1");
+      setActiveActivity(undefined);
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
   useEffect(() => { if (ready) window.localStorage.setItem("quiet-run-draft-v1", JSON.stringify(state)); }, [ready, state]);
   useEffect(() => { if (ready) window.localStorage.setItem("stridebook-profile-v1", JSON.stringify(profile)); }, [profile, ready]);
   useEffect(() => {
     if (!ready || !cloudReady) return;
+    if (!isSupabaseConfigured()) {
+      return;
+    }
     const timer = window.setTimeout(() => {
+      setCloudStatus("saving");
       void syncStateToSupabase(state, authUserId)
-        .then(() => setCloudStatus((current) => current === "error" ? "connected" : current))
+        .then(() => setCloudStatus("connected"))
         .catch((error: unknown) => {
           const message = error instanceof Error ? error.message : "Could not sync with Supabase.";
           console.error("Supabase sync failed", error);
@@ -143,7 +178,7 @@ export function QuietRunApp() {
         });
     }, 450);
     return () => window.clearTimeout(timer);
-  }, [authUserId, cloudReady, ready, state]);
+  }, [authUserId, cloudReady, ready, state, syncRevision]);
 
   /** Show a short confirmation without coupling page components to app-level state. */
   function notify(message: string) {
@@ -152,30 +187,79 @@ export function QuietRunApp() {
     toastTimer.current = window.setTimeout(() => setToast(undefined), 2600);
   }
 
-  const openTab = (next: Tab) => { setActiveActivity(undefined); setTab(next); window.scrollTo({ top: 0, behavior: "smooth" }); };
-  /** Parse the FIT file in the browser; persistence happens only after review. */
-  async function handleFile(file: File) {
-    setLoading(true); setUploadError(undefined);
-    try {
-      if (!file.name.toLowerCase().endsWith(".fit")) throw new Error("Stridebook accepts .FIT files only in this draft.");
-      setPreview(await parseFitFile(file, "me"));
-    } catch (error) { setUploadError(error instanceof Error ? error.message : String(error)); }
-    finally { setLoading(false); }
+  function writeNavigationUrl(nextTab: Tab, profileOpen = false) {
+    const params = new URLSearchParams(window.location.search);
+    params.set("tab", nextTab);
+    if (profileOpen) params.set("profile", "1");
+    else params.delete("profile");
+    const query = params.toString();
+    window.history.pushState(null, "", query ? `${window.location.pathname}?${query}` : window.location.pathname);
   }
-  /** Commit the reviewed activity and link it to a matching plan when possible. */
+  const openTab = (next: Tab) => { setActiveActivity(undefined); setShowProfile(false); setTab(next); writeNavigationUrl(next); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const openProfile = () => { setActiveActivity(undefined); setShowProfile(true); writeNavigationUrl(tab, true); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const closeProfile = () => { setShowProfile(false); writeNavigationUrl(tab); };
+  const retryCloudSync = () => { setCloudStatus("saving"); setSyncRevision((current) => current + 1); };
+  /** Parse one or more FIT files in the browser; persistence happens only after review. */
+  async function handleFiles(files: File[]) {
+    const fitFiles = files.filter((file) => file.name.toLowerCase().endsWith(".fit"));
+    if (!fitFiles.length) {
+      setUploadError("Stridebook accepts .FIT files only in this draft.");
+      return;
+    }
+    setLoading(true); setUploadError(undefined);
+    const parsed: Activity[] = [];
+    const errors: string[] = [];
+    for (const file of fitFiles) {
+      try {
+        parsed.push(await parseFitFile(file, "me"));
+      } catch (error) {
+        errors.push(`${file.name}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    setPreviews(parsed);
+    if (errors.length) setUploadError(`Some files could not be read. ${errors.join(" ")}`);
+    setLoading(false);
+  }
+  /** Commit reviewed activities and link each one to a matching plan when possible. */
   function confirmImport() {
-    if (!preview) return;
-    if (isDuplicateActivity(preview, state.activities)) { setUploadError("This activity already exists. Duplicate import was stopped."); return; }
-    const matching = findMatchingWorkout(preview, state.workouts);
-    const updatedPreview = matching ? { ...preview, type: matching.type, title: matching.title } : preview;
-    setState((current) => ({ ...current, activities: [...current.activities, updatedPreview], workouts: current.workouts.map((workout) => workout.id === matching?.id ? { ...workout, activityId: updatedPreview.id, status: getWorkoutStatus(workout, updatedPreview) } : workout) }));
-    notify("Activity saved.");
-    setPreview(undefined); setActiveActivity(updatedPreview); setUploadError(undefined);
+    if (!previews.length) return;
+    const imported: Activity[] = [];
+    const matchedWorkouts = new Map<string, PlannedWorkout>();
+    const duplicates: string[] = [];
+    for (const preview of previews) {
+      if (isDuplicateActivity(preview, [...state.activities, ...imported])) {
+        duplicates.push(preview.title);
+        continue;
+      }
+      const matching = findMatchingWorkout(preview, state.workouts.filter((workout) => !matchedWorkouts.has(workout.id)));
+      const updatedPreview = matching ? { ...preview, type: matching.type, title: matching.title } : preview;
+      imported.push(updatedPreview);
+      if (matching) matchedWorkouts.set(matching.id, matching);
+    }
+    if (!imported.length) {
+      setUploadError("These activities already exist. Duplicate import was stopped.");
+      return;
+    }
+    setState((current) => ({
+      ...current,
+      activities: [...current.activities, ...imported],
+      workouts: current.workouts.map((workout) => {
+        const activity = imported.find((item) => matchedWorkouts.get(workout.id) && findMatchingWorkout(item, [workout])?.id === workout.id);
+        return activity ? { ...workout, activityId: activity.id, status: getWorkoutStatus(workout, activity) } : workout;
+      }),
+    }));
+    notify(`${imported.length} activit${imported.length === 1 ? "y" : "ies"} saved.`);
+    setPreviews([]); setActiveActivity(imported[imported.length - 1]);
+    setUploadError(duplicates.length ? `Skipped ${duplicates.length} duplicate file${duplicates.length === 1 ? "" : "s"}.` : undefined);
   }
   /** Keep workout mutations in one place so Today and Plan share identical behavior. */
   function updateWorkout(workoutId: string, updates: Partial<PlannedWorkout>) {
     setState((current) => ({ ...current, workouts: current.workouts.map((workout) => workout.id === workoutId ? { ...workout, ...updates } : workout) }));
     notify(updates.date ? "Plan updated." : updates.status === "missed" ? "Plan marked as missed." : "Plan updated.");
+  }
+  function addWorkout(workout: PlannedWorkout) {
+    setState((current) => ({ ...current, workouts: [...current.workouts, workout] }));
+    notify("Plan added.");
   }
   /** Delete remotely first; only update the UI after Supabase confirms success. */
   async function deleteWorkout(workoutId: string) {
@@ -183,10 +267,11 @@ export function QuietRunApp() {
     setState((current) => ({ ...current, workouts: current.workouts.filter((workout) => workout.id !== workoutId) }));
     notify("Plan deleted.");
   }
-  function updateActivity(activityId: string, updates: Partial<Pick<Activity, "shoeId">>) {
+  function updateActivity(activityId: string, updates: Partial<Pick<Activity, "shoeId" | "rpe" | "note">>) {
     setState((current) => ({ ...current, activities: current.activities.map((activity) => activity.id === activityId ? { ...activity, ...updates } : activity) }));
     setActiveActivity((current) => current?.id === activityId ? { ...current, ...updates } : current);
     if (updates.shoeId !== undefined) notify("Shoe assignment updated.");
+    else if (updates.note !== undefined || updates.rpe !== undefined) notify("Run feedback saved.");
   }
   /** Upsert goals locally; the debounced cloud sync persists the latest state. */
   function saveMonthlyGoal(goal: MonthlyGoal) {
@@ -243,15 +328,15 @@ export function QuietRunApp() {
   }
 
   return (
-    <div className="app-shell min-h-screen pb-28 md:pb-8 md:pl-[280px]">
-      <Nav tab={tab} onChange={openTab} cloudStatus={cloudStatus} />
+    <div className={cn("app-shell dashboard-theme min-h-screen pb-28 md:pb-8 md:pl-[250px]", themeMode === "light" && "dashboard-theme-light")}>
+      <Nav tab={tab} onChange={openTab} cloudStatus={cloudStatus} onRetrySync={retryCloudSync} />
       {toast && <div role="status" className="fixed inset-x-4 top-4 z-[60] mx-auto max-w-sm rounded-2xl border border-[#7f9277]/20 bg-[#343b34] px-4 py-3 text-center text-sm font-semibold text-white shadow-[0_14px_35px_rgba(53,48,39,.18)]">{toast}</div>}
-      <main className="relative mx-auto w-full max-w-6xl px-4 pb-6 pt-5 sm:px-6 md:px-8 md:pt-8">
-        <Header profile={profile} onOpenProfile={() => { setActiveActivity(undefined); setShowProfile(true); }} />
-        {showProfile ? <ProfileView key={`${profile.id}-${profile.maxHr}`} profile={profile} onBack={() => setShowProfile(false)} onSave={handleProfileSave} onSignOut={supabase ? signOut : undefined} /> : activeActivity ? <ActivityDetail key={activeActivity.id} activity={activeActivity} workout={activeWorkout} shoes={state.shoes} maxHr={profile.maxHr} onMaxHrChange={handleMaxHrChange} onBack={() => setActiveActivity(undefined)} onShoeChange={(shoeId) => updateActivity(activeActivity.id, { shoeId })} onExportGpx={() => downloadGpx(activeActivity)} /> : <>
+      <main className="relative mx-auto w-full max-w-[1500px] px-4 pb-6 pt-5 sm:px-6 md:px-8 md:pt-7 lg:px-10">
+        <Header profile={profile} themeMode={themeMode} onToggleTheme={() => setThemeMode((current) => current === "dark" ? "light" : "dark")} onOpenProfile={openProfile} />
+        {showProfile ? <ProfileView key={`${profile.id}-${profile.maxHr}`} profile={profile} onBack={closeProfile} onSave={handleProfileSave} onSignOut={supabase ? signOut : undefined} onOpenGear={() => openTab("gear")} /> : activeActivity ? <ActivityDetail key={activeActivity.id} activity={activeActivity} workout={activeWorkout} shoes={state.shoes} maxHr={profile.maxHr} onMaxHrChange={handleMaxHrChange} onBack={() => setActiveActivity(undefined)} onShoeChange={(shoeId) => updateActivity(activeActivity.id, { shoeId })} onActivityUpdate={(updates) => updateActivity(activeActivity.id, updates)} onExportGpx={() => downloadGpx(activeActivity)} /> : <>
           {tab === "today" && <TodayView state={state} personId="me" today={today} weekDates={visibleWeekDates} weekOffset={weekOffset} onWeekChange={setWeekOffset} onWorkoutUpdate={updateWorkout} />}
-          {tab === "calendar" && <CalendarView state={state} personId="me" today={today} onAdd={(workout) => setState((current) => ({ ...current, workouts: [...current.workouts, workout] }))} onUpdate={updateWorkout} onDelete={deleteWorkout} />}
-          {tab === "upload" && <UploadView preview={preview} loading={loading} error={uploadError} onFile={handleFile} onReset={() => { setPreview(undefined); setUploadError(undefined); }} onConfirm={confirmImport} />}
+          {tab === "calendar" && <CalendarView state={state} personId="me" today={today} onAdd={addWorkout} onUpdate={updateWorkout} onDelete={deleteWorkout} />}
+          {tab === "upload" && <UploadView previews={previews} loading={loading} error={uploadError} onFiles={handleFiles} onReset={() => { setPreviews([]); setUploadError(undefined); }} onConfirm={confirmImport} />}
           {tab === "progress" && <ProgressView state={state} personId="me" today={today} onGoalSave={saveMonthlyGoal} onOpenActivity={setActiveActivity} />}
           {tab === "gear" && <GearView state={state} personId="me" onShoeAdd={addShoe} onShoeUpdate={updateShoe} onShoeRetire={retireShoe} onShoeImageChange={updateShoeImage} />}
         </>}

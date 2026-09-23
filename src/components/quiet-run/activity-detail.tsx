@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity as ActivityIcon, ArrowLeft, Clock3, Download, Gauge, HeartPulse, Route, Target, Thermometer, TrendingUp, Zap } from "lucide-react";
+import { Activity as ActivityIcon, ArrowLeft, Clock3, Download, Gauge, HeartPulse, Route, Save, Target, Thermometer, TrendingUp, Zap } from "lucide-react";
 import { useMemo, useState } from "react";
 import { BANGKOK_TIME_ZONE_NAME } from "@/lib/date";
 import { cleanFitFileName } from "@/lib/fit";
@@ -13,7 +13,7 @@ import { ActivityCompareChart } from "./activity-compare-chart";
 import { RoutePreview } from "./route-preview";
 
 /** Detail page for one FIT run, including route, effort charts, splits, and gear. */
-export function ActivityDetail({ activity, workout, shoes, maxHr, onMaxHrChange, onBack, onShoeChange, onExportGpx }: { activity: Activity; workout?: PlannedWorkout; shoes: Shoe[]; maxHr: number; onMaxHrChange: (maxHr: number) => void; onBack: () => void; onShoeChange: (shoeId?: string) => void; onExportGpx: () => void }) {
+export function ActivityDetail({ activity, workout, shoes, maxHr, onMaxHrChange, onBack, onShoeChange, onActivityUpdate, onExportGpx }: { activity: Activity; workout?: PlannedWorkout; shoes: Shoe[]; maxHr: number; onMaxHrChange: (maxHr: number) => void; onBack: () => void; onShoeChange: (shoeId?: string) => void; onActivityUpdate: (updates: Partial<Pick<Activity, "rpe" | "note">>) => void; onExportGpx: () => void }) {
   const status = workout ? getWorkoutStatus(workout, activity) : "completed";
   const activityShoes = shoes.filter((shoe) => shoe.personId === activity.personId && !shoe.retired);
   const hasTrack = getActivityTrack(activity).length > 1;
@@ -58,6 +58,19 @@ export function ActivityDetail({ activity, workout, shoes, maxHr, onMaxHrChange,
       </GlassCard>
 
       <div className="grid gap-5 lg:grid-cols-2"><GlassCard className="p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[.16em] text-[#85887f]">Gear</p><h2 className="mt-1 text-lg font-medium">Shoe used</h2></div><select aria-label="Shoe used" value={activity.shoeId ?? ""} onChange={(event) => onShoeChange(event.target.value || undefined)} className="h-11 min-w-48 rounded-2xl border border-[#343b34]/10 bg-white/55 px-3 text-sm outline-none focus:border-[#7f9277]"><option value="">No shoe selected</option>{activityShoes.map((shoe) => <option key={shoe.id} value={shoe.id}>{shoe.name}</option>)}</select></div><p className="mt-2 text-sm text-[#858880]">{activity.calories ? `${activity.calories} kcal` : "Calories unavailable"} · {activity.importedFileName ? cleanFitFileName(activity.importedFileName) : "Manual activity"}</p></GlassCard><GlassCard className="p-5"><div className="flex items-start gap-3"><Thermometer size={19} className="mt-0.5 text-[#c29a51]" /><div><p className="text-xs font-semibold uppercase tracking-[.16em] text-[#85887f]">Runner note</p><p className="mt-1 text-sm leading-6 text-[#777b73]">{activity.note || "No note added for this activity."}</p>{activity.rpe && <p className="mt-2 text-xs font-semibold text-[#858880]">RPE {activity.rpe}/10</p>}</div></div></GlassCard></div>
+      <ActivityFeedback activity={activity} onSave={onActivityUpdate} />
     </div>
   );
+}
+
+function ActivityFeedback({ activity, onSave }: { activity: Activity; onSave: (updates: Partial<Pick<Activity, "rpe" | "note">>) => void }) {
+  const [note, setNote] = useState(activity.note ?? "");
+  const [rpe, setRpe] = useState(activity.rpe ? String(activity.rpe) : "");
+
+  function save() {
+    const value = Number(rpe);
+    onSave({ note: note.trim() || undefined, rpe: Number.isFinite(value) && value >= 1 && value <= 10 ? Math.round(value) : undefined });
+  }
+
+  return <GlassCard className="p-5"><div className="flex items-start gap-3"><Thermometer size={19} className="mt-0.5 text-[#c29a51]" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[.16em] text-[#85887f]">Post-run feedback</p><h2 className="mt-1 text-lg font-medium">How did this run feel?</h2></div><label className="text-xs font-medium text-[#72766d]">RPE (1–10)<input aria-label="Rate of perceived exertion" type="number" min="1" max="10" value={rpe} onChange={(event) => setRpe(event.target.value)} className="ml-2 h-9 w-16 rounded-xl border border-[#343b34]/10 bg-white/55 px-2 text-sm outline-none focus:border-[#7f9277]" /></label></div><textarea aria-label="Activity note" value={note} onChange={(event) => setNote(event.target.value)} rows={3} placeholder="Add a note about the effort, weather, or how your legs felt." className="mt-3 w-full resize-none rounded-2xl border border-[#343b34]/10 bg-white/55 px-3 py-2 text-sm outline-none focus:border-[#7f9277]" /><button type="button" onClick={save} className="tap mt-3 inline-flex items-center gap-2 rounded-xl bg-[#343b34] px-3 py-2 text-xs font-semibold text-white"><Save size={14} />Save feedback</button></div></div></GlassCard>;
 }

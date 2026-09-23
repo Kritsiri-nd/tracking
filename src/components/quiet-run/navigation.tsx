@@ -1,41 +1,37 @@
-import { BarChart3, CalendarDays, Home, PackageOpen, Sparkles, Upload, UserRound } from "lucide-react";
+import { BarChart3, CalendarDays, Home, Moon, RefreshCw, Sparkles, Sun, Upload, UserRound } from "lucide-react";
 import Image from "next/image";
 import type { RunnerProfile } from "@/lib/types";
 import { cn, type Tab } from "./shared";
 
-type CloudStatus = "local" | "loading" | "connected" | "error";
+type CloudStatus = "local" | "loading" | "saving" | "connected" | "error";
 
-export function Header({ profile, onOpenProfile }: { profile: RunnerProfile; onOpenProfile: () => void }) {
+export function Header({ profile, themeMode, onToggleTheme, onOpenProfile }: { profile: RunnerProfile; themeMode: "dark" | "light"; onToggleTheme: () => void; onOpenProfile: () => void }) {
   return (
-    <header className="mb-7 flex items-center justify-between gap-3">
-      <div>
-        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[.22em] text-[#7a7f75]"><Image src="/stridebook-logo.png" alt="" width={24} height={24} className="size-6 object-contain" />Stridebook</div>
-        <p className="mt-1 text-sm text-[#777b73]">Move gently. Grow steadily.</p>
-      </div>
-      <button type="button" onClick={onOpenProfile} className="tap flex items-center gap-2 rounded-full border border-white/70 bg-white/45 px-2 py-1.5 text-left shadow-sm" aria-label="Open profile"><span className="grid size-8 place-items-center rounded-full bg-[#dce4d7] text-xs font-bold text-[#53644e]">{profile.displayName.slice(0, 1).toUpperCase() || <UserRound size={15} />}</span><span className="hidden max-w-28 truncate text-sm font-semibold text-[#656960] sm:inline">{profile.displayName || "Profile"}</span></button>
+    <header className="dashboard-header mb-7 flex flex-wrap items-center gap-3 sm:gap-4">
+      <div className="dashboard-mobile-brand flex items-center gap-2 md:hidden"><div className="dashboard-brand-mark grid size-9 place-items-center rounded-xl p-1"><Image src="/stridebook-logo.png" alt="Stridebook logo" width={36} height={36} className="size-full object-contain" /></div><span className="text-sm font-semibold tracking-tight">Stridebook</span></div>
+      <div className="ml-auto flex items-center gap-2"><span className="dashboard-header-caption hidden xl:inline">Your running journal</span><button type="button" onClick={onToggleTheme} className="dashboard-theme-toggle tap grid size-11 place-items-center rounded-2xl" aria-label={`Switch to ${themeMode === "dark" ? "light" : "dark"} mode`} title={`Switch to ${themeMode === "dark" ? "light" : "dark"} mode`}>{themeMode === "dark" ? <Sun size={17} /> : <Moon size={17} />}</button><button type="button" onClick={onOpenProfile} className="dashboard-profile tap flex items-center gap-2 rounded-full px-1.5 py-1.5 text-left" aria-label="Open profile"><span className="grid size-9 place-items-center rounded-full bg-[#a6ff00] text-sm font-bold text-[#111411]">{profile.displayName.slice(0, 1).toUpperCase() || <UserRound size={15} />}</span><span className="hidden max-w-28 truncate text-sm font-semibold sm:inline">{profile.displayName || "Profile"}</span></button></div>
     </header>
   );
 }
 
-export function Nav({ tab, onChange, cloudStatus }: { tab: Tab; onChange: (tab: Tab) => void; cloudStatus: CloudStatus }) {
+export function Nav({ tab, onChange, cloudStatus, onRetrySync }: { tab: Tab; onChange: (tab: Tab) => void; cloudStatus: CloudStatus; onRetrySync?: () => void }) {
   const items: Array<{ id: Tab; label: string; icon: typeof Home }> = [
     { id: "today", label: "Today", icon: Home },
     { id: "calendar", label: "Plan", icon: CalendarDays },
     { id: "upload", label: "Import", icon: Upload },
     { id: "progress", label: "Progress", icon: BarChart3 },
-    { id: "gear", label: "Gear", icon: PackageOpen },
   ];
+  const statusLabel = cloudStatus === "connected" ? "Cloud synced" : cloudStatus === "error" ? "Cloud unavailable" : cloudStatus === "saving" ? "Saving changes" : cloudStatus === "loading" ? "Connecting" : "Local draft";
+
   return (
     <>
-      <nav className="fixed inset-x-3 bottom-3 z-50 flex items-center justify-around rounded-[24px] border border-white/75 bg-[#f9f6ef]/88 px-2 py-2 shadow-[0_18px_50px_rgba(53,48,39,.18)] backdrop-blur-2xl md:hidden safe-bottom">
-        {items.map(({ id, label, icon: Icon }) => (
-          <button key={id} onClick={() => onChange(id)} className={cn("tap flex min-w-[58px] flex-col items-center justify-center gap-1 rounded-2xl px-1.5 py-1.5 text-[10px] font-semibold transition", tab === id ? "bg-[#343b34] text-white" : "text-[#777b72]")}><Icon size={18} strokeWidth={1.8} />{label}</button>
-        ))}
+      <nav className="dashboard-mobile-nav fixed inset-x-3 bottom-3 z-50 flex items-center justify-around rounded-[24px] px-2 py-2 md:hidden safe-bottom">
+        {items.map(({ id, label, icon: Icon }) => <button key={id} onClick={() => onChange(id)} aria-label={label} className={cn("tap flex min-w-[58px] flex-col items-center justify-center gap-1 rounded-2xl px-1.5 py-1.5 text-[10px] font-semibold transition", tab === id ? "dashboard-nav-active" : "dashboard-nav-idle")}><Icon size={18} strokeWidth={1.8} /><span>{label}</span></button>)}
       </nav>
-      <aside className="fixed inset-y-5 left-5 z-40 hidden w-60 flex-col rounded-[30px] border border-white/75 bg-[#f9f6ef]/72 p-5 shadow-[0_22px_60px_rgba(53,48,39,.1)] backdrop-blur-2xl md:flex">
-        <div className="mb-10 flex items-center gap-3"><div className="grid size-11 place-items-center rounded-2xl bg-[#dce4d7] p-1"><Image src="/stridebook-logo.png" alt="Stridebook logo" width={44} height={44} className="size-full object-contain" /></div><div><div className="font-semibold">Stridebook</div><div className="text-xs text-[#7b7e76]">your running journal</div></div></div>
-        <div className="space-y-2">{items.map(({ id, label, icon: Icon }) => <button key={id} onClick={() => onChange(id)} className={cn("tap flex w-full items-center gap-3 rounded-2xl px-4 text-sm font-medium transition", tab === id ? "bg-[#343b34] text-white shadow-lg" : "text-[#686c64] hover:bg-white/60")}><Icon size={19} />{label}</button>)}</div>
-        <div className="mt-auto rounded-2xl bg-[#dce4d7]/65 p-4 text-xs leading-5 text-[#586554]"><Sparkles size={16} className="mb-2" /><b>{cloudStatus === "connected" ? "Cloud synced" : cloudStatus === "loading" ? "Connecting…" : cloudStatus === "error" ? "Cloud unavailable" : "Local draft"}</b><br />{cloudStatus === "connected" ? "Your data is synced to Supabase." : cloudStatus === "error" ? "Changes are kept locally for now." : "Your data stays in this browser."}</div>
+      <aside className="dashboard-sidebar fixed inset-y-5 left-5 z-40 hidden w-56 flex-col rounded-[26px] p-4 md:flex">
+        <div className="mb-10 flex items-center gap-3"><div className="dashboard-sidebar-logo grid size-12 shrink-0 place-items-center rounded-2xl p-1.5"><Image src="/stridebook-logo.png" alt="Stridebook logo" width={48} height={48} className="size-full object-contain" /></div><div><div className="font-semibold tracking-tight">Stridebook</div><div className="text-xs text-[#7b7e76]">your running journal</div></div></div>
+        <div className="flex w-full flex-col gap-2">{items.map(({ id, label, icon: Icon }) => <button key={id} onClick={() => onChange(id)} title={label} aria-label={label} className={cn("dashboard-nav-button tap flex w-full items-center gap-3 rounded-2xl px-4 text-sm font-medium transition", tab === id ? "dashboard-nav-active" : "dashboard-nav-idle")}><Icon size={19} /><span>{label}</span></button>)}</div>
+        <div className="dashboard-sidebar-status mt-auto flex items-start gap-2 rounded-2xl p-3 text-xs leading-5" title={statusLabel} aria-label={statusLabel}><Sparkles size={16} className="mt-0.5 shrink-0" /><span className="min-w-0 flex-1"><b>{statusLabel}</b><br /><span className="opacity-65">{cloudStatus === "connected" ? "Synced to Supabase" : cloudStatus === "saving" ? "Syncing your latest change" : cloudStatus === "error" ? "Changes need another try" : "Your data stays private"}</span></span>{cloudStatus === "error" && onRetrySync && <button type="button" onClick={onRetrySync} aria-label="Retry sync" title="Retry sync" className="tap grid size-8 shrink-0 place-items-center rounded-xl bg-white/10 text-current"><RefreshCw size={14} /></button>}</div>
       </aside>
     </>
   );

@@ -59,6 +59,10 @@ button { -webkit-tap-highlight-color: transparent; }
 .safe-bottom { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
 .tap { min-height: 44px; min-width: 44px; }
 
+.weather-timeline { appearance: none; height: 6px; cursor: pointer; border-radius: 999px; background: linear-gradient(90deg, #a6ff00, #7f9277); }
+.weather-timeline::-webkit-slider-thumb { appearance: none; width: 18px; height: 18px; border: 3px solid #f7f4ec; border-radius: 50%; background: #343b34; box-shadow: 0 2px 8px rgba(52,59,52,.24); }
+.weather-timeline::-moz-range-thumb { width: 13px; height: 13px; border: 3px solid #f7f4ec; border-radius: 50%; background: #343b34; box-shadow: 0 2px 8px rgba(52,59,52,.24); }
+
 .route-map .leaflet-container { font: inherit; background: #e8e6dc; }
 .route-map .leaflet-tile { filter: saturate(.72) sepia(.08) brightness(1.06); }
 .route-map .leaflet-control-attribution { border-radius: 10px 0 0; background: rgba(250, 248, 242, .8); color: #687066; font-size: 9px; }
@@ -66,4 +70,161 @@ button { -webkit-tap-highlight-color: transparent; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}
+
+/* Dashboard theme: a dark glass surface with lime data accents. */
+html { background: #111311; }
+body {
+  background:
+    radial-gradient(circle at 72% -8%, rgba(168, 255, 0, .12), transparent 26rem),
+    radial-gradient(circle at 16% 15%, rgba(255, 255, 255, .08), transparent 25rem),
+    linear-gradient(135deg, #111311 0%, #1a1d1b 56%, #101210 100%);
+  color: #f3f5ef;
+}
+
+.dashboard-theme {
+  --dash-bg: #151715;
+  --dash-panel: #1d201e;
+  --dash-panel-soft: #242824;
+  --dash-line: rgba(255, 255, 255, .09);
+  --dash-text: #f2f4ee;
+  --dash-muted: #9ca197;
+  --dash-lime: #a6ff00;
+  position: relative;
+  isolation: isolate;
+  color: var(--dash-text);
+}
+
+.dashboard-theme::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: radial-gradient(rgba(255,255,255,.1) .55px, transparent .55px);
+  background-size: 5px 5px;
+  opacity: .045;
+}
+
+.dashboard-theme .glass,
+.dashboard-theme .soft-card {
+  color: var(--dash-text);
+  background: linear-gradient(145deg, rgba(38, 42, 39, .94), rgba(25, 28, 26, .96));
+  border-color: var(--dash-line);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .22), inset 0 1px rgba(255,255,255,.06);
+  backdrop-filter: blur(24px) saturate(120%);
+  -webkit-backdrop-filter: blur(24px) saturate(120%);
+}
+
+.dashboard-theme [class*="bg-white"] { background-color: rgba(255,255,255,.055) !important; }
+.dashboard-theme [class*="border-white"] { border-color: rgba(255,255,255,.10) !important; }
+.dashboard-theme [class*="text-[#"] { color: var(--dash-muted) !important; }
+.dashboard-theme h1,
+.dashboard-theme h2,
+.dashboard-theme h3,
+.dashboard-theme h4 { color: var(--dash-text) !important; }
+.dashboard-theme [class*="from-[#"],
+.dashboard-theme [class*="via-[#"],
+.dashboard-theme [class*="to-[#"] { background-image: none !important; background-color: transparent !important; }
+.dashboard-theme [class*="bg-[#dce4d7"],
+.dashboard-theme [class*="bg-[#eef1e8"],
+.dashboard-theme [class*="bg-[#f1f3ec"] { background-color: rgba(166,255,0,.10) !important; }
+.dashboard-theme [class*="bg-[#eee2c7"],
+.dashboard-theme [class*="bg-[#e6e2ec"],
+.dashboard-theme [class*="bg-[#ead9d7"],
+.dashboard-theme [class*="bg-[#efddd5"] { background-color: rgba(255,255,255,.07) !important; }
+.dashboard-theme [class*="bg-[#fbfaf5"],
+.dashboard-theme [class*="bg-[#faf8f2"],
+.dashboard-theme [class*="bg-[#f5f0e5"] { background-color: rgba(255,255,255,.035) !important; }
+
+.dashboard-header { color: var(--dash-text); }
+.dashboard-mobile-brand { color: var(--dash-text); }
+.dashboard-brand-mark,
+.dashboard-sidebar-logo { background: rgba(166,255,0,.12); box-shadow: 0 0 24px rgba(166,255,0,.08); }
+.dashboard-brand-mark img,
+.dashboard-sidebar-logo img { filter: drop-shadow(0 0 8px rgba(166,255,0,.55)); }
+.dashboard-header-caption { color: var(--dash-muted); font-size: .75rem; }
+.dashboard-profile { border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.045); color: var(--dash-text); }
+.dashboard-theme-toggle { border: 1px solid rgba(255,255,255,.09); background: rgba(255,255,255,.055); color: var(--dash-text); }
+.dashboard-theme-toggle:hover { border-color: rgba(166,255,0,.35); color: var(--dash-lime); }
+
+.dashboard-sidebar { border: 1px solid rgba(255,255,255,.09); background: rgba(22,25,23,.86); box-shadow: 0 24px 65px rgba(0,0,0,.28), inset 0 1px rgba(255,255,255,.05); backdrop-filter: blur(24px); }
+.dashboard-nav-idle { color: #777d73; }
+.dashboard-nav-idle:hover { color: var(--dash-text); background: rgba(255,255,255,.06); }
+.dashboard-nav-active { color: #111411 !important; background: var(--dash-lime) !important; box-shadow: 0 0 26px rgba(166,255,0,.22); }
+.dashboard-sidebar-status { color: var(--dash-lime); background: rgba(166,255,0,.08); }
+.dashboard-sidebar-status { width: 100%; min-height: 62px; }
+.dashboard-mobile-nav { border: 1px solid rgba(255,255,255,.12); background: rgba(22,25,23,.9); box-shadow: 0 18px 50px rgba(0,0,0,.45); backdrop-filter: blur(24px); }
+.dashboard-people-art { opacity: .98; }
+.dashboard-people-glow { position: absolute; inset: 18% 8% 0; border-radius: 50%; background: radial-gradient(circle, rgba(166,255,0,.25), transparent 68%); filter: blur(12px); }
+
+.dashboard-theme input,
+.dashboard-theme select,
+.dashboard-theme textarea { color: var(--dash-text); border-color: rgba(255,255,255,.12) !important; background-color: rgba(255,255,255,.055) !important; }
+.dashboard-theme input::placeholder,
+.dashboard-theme textarea::placeholder { color: #70766e; }
+.dashboard-theme .route-map .leaflet-container { background: #202521; }
+.dashboard-theme .route-map .leaflet-control-attribution { background: rgba(20,22,21,.8); color: #9ca197; }
+.dashboard-theme .route-map .leaflet-control-attribution a { color: var(--dash-lime); }
+
+/* Light mode keeps the previous paper/glass look and the same layout. */
+.dashboard-theme-light {
+  color: #292d28;
+  background:
+    radial-gradient(circle at 8% 4%, rgba(255,255,255,.95), transparent 31rem),
+    radial-gradient(circle at 90% 14%, rgba(127,146,119,.16), transparent 28rem),
+    linear-gradient(155deg, #f7f4ec 0%, #eee8dc 100%);
+}
+.dashboard-theme-light::before { opacity: .2; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.08'/%3E%3C/svg%3E"); }
+.dashboard-theme-light .glass,
+.dashboard-theme-light .soft-card { color: #292d28; background: rgba(255,253,248,.63); border-color: rgba(255,255,255,.73); box-shadow: 0 18px 45px rgba(70,62,48,.08), inset 0 1px rgba(255,255,255,.45); }
+.dashboard-theme-light [class*="bg-white"] { background-color: rgba(255,255,255,.42) !important; }
+.dashboard-theme-light [class*="border-white"] { border-color: rgba(255,255,255,.73) !important; }
+.dashboard-theme-light [class*="text-[#"] { color: #74786f !important; }
+.dashboard-theme-light h1,
+.dashboard-theme-light h2,
+.dashboard-theme-light h3,
+.dashboard-theme-light h4 { color: #292d28 !important; }
+.dashboard-theme-light [class*="from-[#"],
+.dashboard-theme-light [class*="via-[#"],
+.dashboard-theme-light [class*="to-[#"] { background-image: none !important; background-color: rgba(250,248,242,.78) !important; }
+.dashboard-theme-light [class*="bg-[#dce4d7"] { background-color: rgba(220,228,215,.65) !important; }
+.dashboard-theme-light [class*="bg-[#eef1e8"],
+.dashboard-theme-light [class*="bg-[#f1f3ec"] { background-color: rgba(241,243,236,.75) !important; }
+.dashboard-theme-light [class*="bg-[#eee2c7"] { background-color: rgba(238,226,199,.65) !important; }
+.dashboard-theme-light [class*="bg-[#e6e2ec"] { background-color: rgba(230,226,236,.7) !important; }
+.dashboard-theme-light [class*="bg-[#ead9d7"],
+.dashboard-theme-light [class*="bg-[#efddd5"] { background-color: rgba(234,217,215,.65) !important; }
+.dashboard-theme-light [class*="bg-[#fbfaf5"],
+.dashboard-theme-light [class*="bg-[#faf8f2"],
+.dashboard-theme-light [class*="bg-[#f5f0e5"] { background-color: rgba(250,248,242,.78) !important; }
+.dashboard-theme-light .dashboard-header-caption { color: #74786f; }
+.dashboard-theme-light .dashboard-profile { border-color: rgba(255,255,255,.7); background: rgba(255,255,255,.45); color: #656960; }
+.dashboard-theme-light .dashboard-theme-toggle { border-color: rgba(75,78,70,.13); background: rgba(255,255,255,.55); color: #292d28; }
+.dashboard-theme-light .dashboard-sidebar { border-color: rgba(255,255,255,.75); background: rgba(249,246,239,.8); box-shadow: 0 22px 60px rgba(53,48,39,.1); }
+.dashboard-theme-light .dashboard-sidebar-logo { background: #dce4d7; }
+.dashboard-theme-light .dashboard-nav-idle { color: #686c64; }
+.dashboard-theme-light .dashboard-nav-idle:hover { color: #343b34; background: rgba(255,255,255,.6); }
+.dashboard-theme-light .dashboard-nav-active { color: #fff !important; background: #343b34 !important; box-shadow: 0 10px 25px rgba(53,59,52,.2); }
+.dashboard-theme-light .dashboard-sidebar-status { color: #586554; background: rgba(220,228,215,.65); }
+.dashboard-theme-light .dashboard-people-glow { background: radial-gradient(circle, rgba(127,146,119,.25), transparent 68%); }
+.dashboard-theme-light .dashboard-mobile-nav { border-color: rgba(255,255,255,.75); background: rgba(249,246,239,.88); box-shadow: 0 18px 50px rgba(53,48,39,.18); }
+.dashboard-theme-light .dashboard-theme-toggle:hover { color: #53644e; border-color: rgba(127,146,119,.45); }
+.dashboard-theme-light input,
+.dashboard-theme-light select,
+.dashboard-theme-light textarea { color: #292d28; border-color: rgba(52,59,52,.10) !important; background-color: rgba(255,255,255,.55) !important; }
+.dashboard-theme-light .route-map .leaflet-container { background: #e8e6dc; }
+.dashboard-theme-light .route-map .leaflet-control-attribution { background: rgba(250,248,242,.8); color: #687066; }
+.dashboard-theme-light .route-map .leaflet-control-attribution a { color: #586254; }
+
+@media (max-width: 767px) {
+  .dashboard-theme { padding-top: .35rem; }
+}
+
+.weather-base-tile {
+  filter: grayscale(0.82) invert(0.68) hue-rotate(180deg) brightness(0.9) contrast(1.08) saturate(0.7);
+}
+
+.dashboard-theme-light .weather-base-tile {
+  filter: grayscale(0.25) brightness(0.96) contrast(1.04) saturate(0.82);
 }
