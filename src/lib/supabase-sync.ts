@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fitActivityTitle } from "./fit";
+import { getActivityTrack, sampleActivityTrack } from "./gpx";
 import { SUPABASE_SHOE_BUCKET, supabase } from "./supabase";
 import type { Activity, ActivityLap, ActivityPoint, LocalState, MonthlyGoal, PlannedWorkout, Shoe, WorkoutStatus, WorkoutType } from "./types";
 
@@ -195,21 +196,45 @@ async function upsertRows(client: SupabaseClient, table: string, rows: AnyRow[],
 }
 
 function activityPoints(activity: Activity) {
-  const trackByIndex = activity.track ?? [];
-  return activity.stream.map((point, index) => {
-    const trackPoint = trackByIndex[index];
-    return {
+  // `stream` is a sparse metric sample while `track` is GPS-only data. Never
+  // pair them by array index; doing so creates the zig-zag route seen in old
+  // imports when a sampled record has no position.
+  const route = getActivityTrack(activity);
+  const routePoints = route.length > 1 ? sampleActivityTrack(route) : [];
+  if (!routePoints.length) {
+    return activity.stream.map((point, index) => ({
       activity_id: activity.id,
       point_index: index,
-      distance_km: point.distanceKm ?? trackPoint?.distanceKm ?? null,
-      latitude: point.latitude ?? trackPoint?.latitude ?? null,
-      longitude: point.longitude ?? trackPoint?.longitude ?? null,
-      elevation_m: point.elevationM ?? trackPoint?.elevationM ?? null,
+      distance_km: point.distanceKm ?? null,
+      latitude: point.latitude ?? null,
+      longitude: point.longitude ?? null,
+      elevation_m: point.elevationM ?? null,
       pace_sec_per_km: point.paceSecPerKm ?? null,
       heart_rate: point.heartRate ?? null,
       cadence: point.cadence ?? null,
       temperature_c: point.temperatureC ?? null,
-      recorded_at: point.timestamp ?? trackPoint?.timestamp ?? null,
+      recorded_at: point.timestamp ?? null,
+    }));
+  }
+
+  return routePoints.map((trackPoint, index) => {
+    const metricPoint = activity.stream.reduce<ActivityPoint | undefined>((closest, point) => {
+      if (trackPoint.distanceKm === undefined || point.distanceKm === undefined) return closest ?? point;
+      if (!closest || closest.distanceKm === undefined) return point;
+      return Math.abs(point.distanceKm - trackPoint.distanceKm) < Math.abs(closest.distanceKm - trackPoint.distanceKm) ? point : closest;
+    }, undefined);
+    return {
+      activity_id: activity.id,
+      point_index: index,
+      distance_km: trackPoint.distanceKm ?? metricPoint?.distanceKm ?? null,
+      latitude: trackPoint.latitude,
+      longitude: trackPoint.longitude,
+      elevation_m: trackPoint.elevationM ?? metricPoint?.elevationM ?? null,
+      pace_sec_per_km: metricPoint?.paceSecPerKm ?? null,
+      heart_rate: metricPoint?.heartRate ?? null,
+      cadence: metricPoint?.cadence ?? null,
+      temperature_c: metricPoint?.temperatureC ?? null,
+      recorded_at: trackPoint.timestamp ?? metricPoint?.timestamp ?? null,
     };
   });
 }

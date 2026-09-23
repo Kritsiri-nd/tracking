@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getBangkokDateKey, getBangkokWeekDates, shiftBangkokDateKey } from "@/lib/date";
 import { parseFitFile } from "@/lib/fit";
-import { findMatchingWorkout, isDuplicateActivity } from "@/lib/import-logic";
+import { findMatchingWorkout, isDuplicateActivity, isRouteRepair } from "@/lib/import-logic";
 import { getWorkoutStatus } from "@/lib/progress";
 import { initialState } from "@/lib/mock-data";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
@@ -226,7 +226,22 @@ export function QuietRunApp() {
     const imported: Activity[] = [];
     const matchedWorkouts = new Map<string, PlannedWorkout>();
     const duplicates: string[] = [];
+    const repairedActivityIds = new Set<string>();
     for (const preview of previews) {
+      const existingActivity = state.activities.find((activity) => isRouteRepair(preview, activity));
+      if (existingActivity) {
+        imported.push({
+          ...preview,
+          id: existingActivity.id,
+          title: existingActivity.title,
+          type: existingActivity.type,
+          shoeId: existingActivity.shoeId,
+          rpe: existingActivity.rpe,
+          note: existingActivity.note,
+        });
+        repairedActivityIds.add(existingActivity.id);
+        continue;
+      }
       if (isDuplicateActivity(preview, [...state.activities, ...imported])) {
         duplicates.push(preview.title);
         continue;
@@ -242,7 +257,7 @@ export function QuietRunApp() {
     }
     setState((current) => ({
       ...current,
-      activities: [...current.activities, ...imported],
+      activities: [...current.activities.filter((activity) => !repairedActivityIds.has(activity.id)), ...imported],
       workouts: current.workouts.map((workout) => {
         const activity = imported.find((item) => matchedWorkouts.get(workout.id) && findMatchingWorkout(item, [workout])?.id === workout.id);
         return activity ? { ...workout, activityId: activity.id, status: getWorkoutStatus(workout, activity) } : workout;

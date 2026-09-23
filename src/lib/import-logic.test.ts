@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findMatchingWorkout, isDuplicateActivity } from "./import-logic";
+import { findMatchingWorkout, isDuplicateActivity, isRouteRepair } from "./import-logic";
 import type { Activity, PlannedWorkout } from "./types";
 
 const candidate: Activity = {
@@ -50,5 +50,21 @@ describe("import matching", () => {
 
   it("returns undefined when no eligible plan exists", () => {
     expect(findMatchingWorkout(candidate, [workout({ date: "2026-09-23" })])).toBeUndefined();
+  });
+
+  it("recognizes a higher-resolution re-import as a route repair", () => {
+    const existing = {
+      ...candidate,
+      id: "a-existing",
+      importedFileName: "run.fit",
+      track: Array.from({ length: 53 }, (_, index) => ({ latitude: 13 + index / 10000, longitude: 100 + index / 10000 })),
+    };
+    const repaired = {
+      ...candidate,
+      id: "a-new",
+      importedFileName: "run.fit",
+      track: Array.from({ length: 360 }, (_, index) => ({ latitude: 13 + index / 10000, longitude: 100 + index / 10000 })),
+    };
+    expect(isRouteRepair(repaired, existing)).toBe(true);
   });
 });

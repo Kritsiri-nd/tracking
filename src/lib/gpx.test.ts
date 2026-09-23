@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activityToGpx, getActivityTrack } from "./gpx";
+import { activityToGpx, getActivityTrack, sampleActivityTrack } from "./gpx";
 import type { Activity } from "./types";
 
 const activity: Activity = {
@@ -42,5 +42,25 @@ describe("GPX export", () => {
       { distanceKm: 3, latitude: 13.758, longitude: 100.504 },
     ] };
     expect(getActivityTrack(noisyActivity)).toHaveLength(3);
+  });
+
+  it("keeps a real return to the starting area through the finish", () => {
+    const closedLoopActivity = { ...activity, track: [
+      { distanceKm: 0, latitude: 13.7563, longitude: 100.5018 },
+      { distanceKm: 1, latitude: 13.759, longitude: 100.506 },
+      { distanceKm: 2, latitude: 13.758, longitude: 100.504 },
+      { distanceKm: 3, latitude: 13.75631, longitude: 100.50181 },
+    ] };
+    const points = getActivityTrack(closedLoopActivity);
+    expect(points).toHaveLength(4);
+    expect(points.at(-1)).toMatchObject({ latitude: 13.75631, longitude: 100.50181 });
+  });
+
+  it("samples long routes without losing the endpoints", () => {
+    const points = Array.from({ length: 1000 }, (_, index) => ({ latitude: 1 + index / 10000, longitude: 2 + index / 10000 }));
+    const sampled = sampleActivityTrack(points, 100);
+    expect(sampled).toHaveLength(100);
+    expect(sampled[0]).toBe(points[0]);
+    expect(sampled.at(-1)).toBe(points.at(-1));
   });
 });

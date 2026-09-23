@@ -15,17 +15,48 @@ function distanceBetweenKm(first: ActivityTrackPoint, second: ActivityTrackPoint
   return earthRadiusKm * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
 }
 
-/** Remove repeated start-position GPS samples that create false spikes in the route. */
+function validTrackPoint(point: ActivityTrackPoint) {
+  return Number.isFinite(point.latitude) && Number.isFinite(point.longitude)
+    && Math.abs(point.latitude) <= 90
+    && Math.abs(point.longitude) <= 180;
+}
+
+/**
+ * Remove only invalid coordinates and isolated GPS spikes.
+ *
+ * A runner can legitimately finish close to the starting point. The old
+ * implementation removed every late point near the start, which shortened
+ * closed-loop routes and made the final segment look misaligned on the map.
+ */
 function cleanActivityTrack(points: ActivityTrackPoint[]) {
-  if (points.length < 3) return points;
-  const origin = points[0];
-  const originDistanceKm = origin.distanceKm ?? 0;
-  const cleaned = points.filter((point, index) => {
-    const isInteriorPoint = index > 0 && index < points.length - 1;
-    const isRepeatedStartPosition = isInteriorPoint && (point.distanceKm ?? 0) > originDistanceKm + 0.5 && distanceBetweenKm(origin, point) < 0.25;
-    return !isRepeatedStartPosition;
+  const validPoints = points.filter(validTrackPoint);
+  if (validPoints.length < 3) return validPoints;
+
+  const cleaned = validPoints.filter((point, index) => {
+    if (index === 0 || index === validPoints.length - 1) return true;
+
+    const previous = validPoints[index - 1];
+    const next = validPoints[index + 1];
+    const previousToPoint = distanceBetweenKm(previous, point);
+    const pointToNext = distanceBetweenKm(point, next);
+    const previousToNext = distanceBetweenKm(previous, next);
+
+    // A single sample that jumps away and immediately returns is a GPS spike.
+    // The endpoint is never removed, so a real return to the start stays intact.
+    return !(previousToPoint > 0.35 && pointToNext > 0.35 && previousToNext < 0.35);
   });
-  return cleaned.length >= 2 ? cleaned : points;
+
+  return cleaned.length >= 2 ? cleaned : validPoints;
+}
+
+/** Keep a detailed but database-friendly route while preserving both endpoints. */
+export function sampleActivityTrack(points: ActivityTrackPoint[], maxPoints = 360) {
+  if (points.length <= maxPoints) return points;
+  const sampled = Array.from({ length: maxPoints }, (_, index) => {
+    const sourceIndex = Math.round(index * (points.length - 1) / (maxPoints - 1));
+    return points[sourceIndex];
+  });
+  return sampled.filter((point, index) => index === 0 || point !== sampled[index - 1]);
 }
 
 export function getActivityTrack(activity: Activity): ActivityTrackPoint[] {
