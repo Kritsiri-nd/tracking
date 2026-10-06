@@ -91,7 +91,7 @@ export function QuietRunApp() {
   }, []);
 
   useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
+    const timer = window.setTimeout(() => {
       const saved = window.localStorage.getItem("stridebook-profile-v1");
       if (!saved) return;
       try {
@@ -103,15 +103,15 @@ export function QuietRunApp() {
         window.localStorage.removeItem("stridebook-profile-v1");
       }
     });
-    return () => window.cancelAnimationFrame(frame);
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
+    const timer = window.setTimeout(() => {
       const savedTheme = window.localStorage.getItem("stridebook-theme-v1");
       if (savedTheme === "light") setThemeMode("light");
     });
-    return () => window.cancelAnimationFrame(frame);
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -132,7 +132,7 @@ export function QuietRunApp() {
   }, []);
 
   useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
+    const timer = window.setTimeout(() => {
       const useCloudAsSource = isSupabaseConfigured();
       const saved = useCloudAsSource ? null : window.localStorage.getItem("quiet-run-draft-v1");
       if (useCloudAsSource) window.localStorage.removeItem("quiet-run-draft-v1");
@@ -145,7 +145,7 @@ export function QuietRunApp() {
       setReady(true);
     });
     if ("serviceWorker" in navigator && process.env.NODE_ENV === "production") navigator.serviceWorker.register("/sw.js").catch(() => undefined);
-    return () => window.cancelAnimationFrame(frame);
+    return () => window.clearTimeout(timer);
   }, []);
   useEffect(() => {
     if (!ready || cloudBootstrapped.current || (isSupabaseConfigured() && !authUserId)) return;
