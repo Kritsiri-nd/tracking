@@ -1,139 +1,99 @@
 "use client";
 
-import { MapPin, Pause, Play, Radio } from "lucide-react";
-import { Fragment } from "react";
-import { useEffect, useState } from "react";
-import { Circle, CircleMarker, MapContainer, TileLayer, Tooltip } from "react-leaflet";
-import type { LatLngExpression } from "leaflet";
-import { fetchRainViewerRadar, type RainViewerRadar, type WeatherExplorerForecast, type WeatherReading } from "@/lib/weather";
+import { Pause, Play, RefreshCw } from "lucide-react";
+import { Fragment, useEffect, useState } from "react";
+import { Circle, CircleMarker, MapContainer, TileLayer, Tooltip, useMap, useMapEvents } from "react-leaflet";
+import { CHONBURI_LOCATIONS, fetchRainViewerRadar, type RainViewerRadar, type WeatherExplorerForecast, type WeatherLocation, type WeatherReading } from "@/lib/weather";
+import { forecastColor, forecastScales, type WeatherLayer, type WeatherMode } from "@/lib/weather-planning";
+import { cn } from "./shared";
 
-type WeatherLayer = "rain" | "temperature" | "wind";
+const timeLabel = (time: number) => new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(time));
 
-function parseLocalTime(value: string) {
-  return new Date(/[zZ]|[+-]\d\d:\d\d$/.test(value) ? value : `${value}:00+07:00`);
+function MapInteraction({ location, onPin }: { location: WeatherLocation; onPin: (location: WeatherLocation) => void }) {
+  const map = useMap();
+  useEffect(() => { map.setView([location.latitude, location.longitude], map.getZoom()); }, [location.latitude, location.longitude, map]);
+  useMapEvents({ click: (event) => onPin({ name: "Pinned location", latitude: event.latlng.lat, longitude: event.latlng.lng }) });
+  return null;
 }
 
-function formatSelectedTime(value: string) {
-  return new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Bangkok", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(parseLocalTime(value));
-}
+type Props = { forecast?: WeatherExplorerForecast; selectedHour: number; layer: WeatherLayer; mode: WeatherMode; selectedLocation: WeatherLocation; onSelectLocation: (name: string) => void; onPin: (location: WeatherLocation) => void };
 
-function rainAmount(reading: WeatherReading) {
-  return reading.rainMm + reading.showersMm;
-}
-
-function rainColor(reading: WeatherReading) {
-  const amount = rainAmount(reading);
-  if (amount >= 4 || reading.precipitationProbability >= 90) return "#a855f7";
-  if (amount >= 2 || reading.precipitationProbability >= 70) return "#f15b78";
-  if (amount >= 0.5 || reading.precipitationProbability >= 40) return "#f5a623";
-  if (amount > 0 || reading.precipitationProbability >= 15) return "#77c77d";
-  return "#94a394";
-}
-
-function temperatureColor(value: number) {
-  if (value >= 34) return "#ed5d62";
-  if (value >= 31) return "#f4a340";
-  if (value >= 28) return "#f0cf67";
-  return "#70b7d9";
-}
-
-function windColor(value: number) {
-  if (value >= 30) return "#a855f7";
-  if (value >= 20) return "#f5a623";
-  if (value >= 10) return "#70b7d9";
-  return "#94a394";
-}
-
-function layerColor(layer: WeatherLayer, reading: WeatherReading) {
-  if (layer === "temperature") return temperatureColor(reading.temperatureC);
-  if (layer === "wind") return windColor(reading.windKmh);
-  return rainColor(reading);
-}
-
-function layerName(layer: WeatherLayer) {
-  if (layer === "temperature") return "Temperature";
-  if (layer === "wind") return "Wind";
-  return "Rain";
-}
-
-function MapLegend({ layer }: { layer: WeatherLayer }) {
-  const items = layer === "rain"
-    ? [["#2c9bd6", "Light"], ["#087bc1", "Moderate"], ["#ffe500", "Heavy"], ["#f36b21", "Storm"]]
-    : layer === "temperature"
-      ? [["#70b7d9", "Cool"], ["#f0cf67", "Warm"], ["#f4a340", "Hot"], ["#ed5d62", "Very hot"]]
-      : [["#94a394", "Calm"], ["#70b7d9", "Breezy"], ["#f5a623", "Windy"], ["#a855f7", "Strong"]];
-  return <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-[#687066]">{items.map(([color, label]) => <span key={label} className="inline-flex items-center gap-1"><i className="size-2 rounded-full" style={{ backgroundColor: color }} />{label}</span>)}</div>;
-}
-
-export function WeatherMap({ forecast, selectedHour, layer, selectedLocationName }: { forecast: WeatherExplorerForecast; selectedHour: number; layer: WeatherLayer; selectedLocationName: string }) {
+export function WeatherMap({ forecast, selectedHour, layer, mode, selectedLocation, onSelectLocation, onPin }: Props) {
   const [radar, setRadar] = useState<RainViewerRadar>();
-  const [radarFrameIndex, setRadarFrameIndex] = useState(0);
-  const [radarPlaying, setRadarPlaying] = useState(false);
+  const [frameIndex, setFrameIndex] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+  const [failedFrame, setFailedFrame] = useState<string>();
+  const [revision, setRevision] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+  const [showCoverage, setShowCoverage] = useState(true);
+  const [coverageError, setCoverageError] = useState(false);
 
   useEffect(() => {
-    let active = true;
-    const loadRadar = () => {
-      const controller = new AbortController();
-      void fetchRainViewerRadar(controller.signal).then((nextRadar) => {
-        if (active) {
-          setRadar(nextRadar);
-          setRadarFrameIndex(Math.max(nextRadar.pastFrames.length - 1, 0));
-        }
-      }).catch(() => undefined);
-      return controller;
-    };
-    let controller = loadRadar();
-    const timer = window.setInterval(() => {
-      controller.abort();
-      controller = loadRadar();
-    }, 5 * 60 * 1000);
-    return () => {
-      active = false;
-      controller.abort();
-      window.clearInterval(timer);
-    };
-  }, []);
-
-  const radarFrames = radar?.pastFrames.length ? radar.pastFrames : radar?.frames ?? [];
-  const activeRadarFrame = radarFrames[radarFrameIndex] ?? radarFrames.at(-1);
-  const radarTime = activeRadarFrame ? new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(activeRadarFrame.time * 1000)) : undefined;
-
-  useEffect(() => {
-    if (!radarPlaying || layer !== "rain" || selectedHour !== 0 || radarFrames.length < 2) return;
-    const timer = window.setInterval(() => {
-      setRadarFrameIndex((current) => (current + 1) % radarFrames.length);
-    }, 900);
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
     return () => window.clearInterval(timer);
-  }, [layer, radarFrames.length, radarPlaying, selectedHour]);
+  }, []);
+  useEffect(() => {
+    if (mode !== "radar") return;
+    let controller: AbortController;
+    let active = true;
+    const load = () => {
+      controller?.abort();
+      controller = new AbortController();
+      const signal = controller.signal;
+      setLoading(true); setError(false); setPlaying(false); setFailedFrame(undefined); setCoverageError(false);
+      void fetchRainViewerRadar(signal).then((next) => {
+        if (!active || signal.aborted) return;
+        setRadar(next); setFrameIndex(next.pastFrames.length - 1);
+      }).catch(() => { if (active && !signal.aborted) setError(true); })
+        .finally(() => { if (active && !signal.aborted) setLoading(false); });
+    };
+    const initial = window.setTimeout(load, 0);
+    const timer = window.setInterval(load, 5 * 60_000);
+    return () => { active = false; controller?.abort(); window.clearTimeout(initial); window.clearInterval(timer); };
+  }, [mode, revision]);
 
-  const toggleRadarPlayback = () => {
-    if (!radarFrames.length) return;
-    if (radarFrameIndex >= radarFrames.length - 1) setRadarFrameIndex(0);
-    setRadarPlaying((current) => !current);
-  };
+  const frames = radar?.pastFrames ?? [];
+  const frame = frames[frameIndex] ?? frames.at(-1);
+  const latest = frames.at(-1);
+  const latestAge = latest ? Math.max(0, Math.floor((now - latest.time * 1000) / 60_000)) : undefined;
+  const frameAge = frame ? Math.max(0, Math.floor((now - frame.time * 1000) / 60_000)) : undefined;
+  useEffect(() => {
+    if (!playing || mode !== "radar" || frames.length < 2) return;
+    const timer = window.setInterval(() => setFrameIndex((current) => (current + 1) % frames.length), 900);
+    return () => window.clearInterval(timer);
+  }, [playing, mode, frames.length]);
 
-  return (
-    <div className="route-map relative h-[280px] overflow-hidden rounded-[22px] border border-white/60 bg-[#e8e6dc] shadow-inner sm:h-[500px]">
-      <MapContainer center={[forecast.latitude, forecast.longitude]} zoom={10} className="h-full w-full" scrollWheelZoom doubleClickZoom>
-        <TileLayer className="weather-base-tile" attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" maxZoom={19} />
-        {layer === "rain" && selectedHour === 0 && radar && activeRadarFrame && <TileLayer key={activeRadarFrame.path} attribution='<a href="https://www.rainviewer.com/">RainViewer</a>' url={`${radar.host}${activeRadarFrame.path}/256/{z}/{x}/{y}/2/1_1.png`} opacity={0.76} maxNativeZoom={7} maxZoom={19} tileSize={256} zIndex={300} />}
-        {forecast.points.map((point) => {
-          const reading = point.readings[selectedHour] ?? point.readings[0];
-          if (!reading) return null;
-          const opacity = layer === "rain" ? Math.min(.72, .16 + reading.precipitationProbability / 150 + rainAmount(reading) / 12) : .28;
-          const center: LatLngExpression = [point.latitude, point.longitude];
-          const selected = point.name === selectedLocationName;
-          return <Fragment key={`${point.latitude}-${point.longitude}`}>{(layer !== "rain" || selectedHour > 0) && <Circle center={center} radius={8500} pathOptions={{ color: layerColor(layer, reading), weight: 1, opacity: .4, fillColor: layerColor(layer, reading), fillOpacity: opacity }} />}<CircleMarker center={center} radius={selected ? 8 : 5} pathOptions={{ color: "#ffffff", weight: selected ? 3 : 2, fillColor: selected ? "#a6ff00" : "#343b34", fillOpacity: 1 }}><Tooltip direction="top" offset={[0, -7]} permanent>{point.name}</Tooltip></CircleMarker></Fragment>;
+  const points: Array<WeatherLocation & { readings?: WeatherReading[] }> = (forecast?.points ?? CHONBURI_LOCATIONS).filter((point) => point.name !== selectedLocation.name || (point.latitude === selectedLocation.latitude && point.longitude === selectedLocation.longitude));
+  return <div className="space-y-3">
+    <div className="route-map relative h-[320px] overflow-hidden rounded-[22px] border border-white/60 bg-[#e8e6dc] sm:h-[460px]">
+      <MapContainer center={[selectedLocation.latitude, selectedLocation.longitude]} zoom={10} className="h-full w-full" scrollWheelZoom={false}>
+        <MapInteraction location={selectedLocation} onPin={onPin} />
+        <TileLayer className="weather-base-tile" attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" maxZoom={19} />
+        {mode === "radar" && radar && frame && <TileLayer key={`${frame.path}-${revision}`} attribution='<a href="https://www.rainviewer.com/">RainViewer</a>' url={`${radar.host}${frame.path}/256/{z}/{x}/{y}/2/1_0.png`} opacity={0.76} maxNativeZoom={7} maxZoom={19} zIndex={300} eventHandlers={{ tileerror: () => setFailedFrame(frame.path) }} />}
+        {mode === "radar" && radar && showCoverage && <TileLayer key={`coverage-${revision}`} url={`${radar.host}/v2/coverage/0/256/{z}/{x}/{y}/0/0_0.png`} opacity={0.35} maxNativeZoom={7} maxZoom={19} zIndex={310} eventHandlers={{ tileerror: () => setCoverageError(true) }} />}
+        {points.map((point) => {
+          const reading = point.readings?.[selectedHour];
+          const selected = point.name === selectedLocation.name;
+          return <Fragment key={`${point.name}-${point.latitude}-${point.longitude}`}>
+            {mode === "forecast" && reading && <Circle center={[point.latitude, point.longitude]} radius={6500} pathOptions={{ color: forecastColor(layer, reading), weight: 1, fillColor: forecastColor(layer, reading), fillOpacity: .3 }} bubblingMouseEvents={false} eventHandlers={{ click: () => onSelectLocation(point.name) }} />}
+            <CircleMarker center={[point.latitude, point.longitude]} radius={selected ? 9 : 6} pathOptions={{ color: "#fff", weight: 2, fillColor: selected ? "#a6ff00" : "#343b34", fillOpacity: 1 }} bubblingMouseEvents={false} eventHandlers={{ click: () => onSelectLocation(point.name) }}><Tooltip direction="top" permanent>{point.name}</Tooltip></CircleMarker>
+          </Fragment>;
         })}
+        {!points.some((point) => point.name === selectedLocation.name && point.latitude === selectedLocation.latitude && point.longitude === selectedLocation.longitude) && <CircleMarker center={[selectedLocation.latitude, selectedLocation.longitude]} radius={9} pathOptions={{ color: "#fff", fillColor: "#a6ff00", fillOpacity: 1 }}><Tooltip permanent>{selectedLocation.name}</Tooltip></CircleMarker>}
       </MapContainer>
-      <div className="pointer-events-none absolute left-3 top-3 z-[400] flex items-center gap-2 rounded-full border border-white/20 bg-[#101615]/82 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[.14em] text-white shadow-sm backdrop-blur-sm"><MapPin size={13} />{forecast.locationName} · {layer === "rain" && activeRadarFrame && selectedHour === 0 ? "Live radar" : "Forecast"}</div>
-      <div className="pointer-events-none absolute bottom-3 left-3 right-3 z-[400] flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/20 bg-[#101615]/82 px-3 py-2 shadow-sm backdrop-blur-sm">
-        <MapLegend layer={layer} />
-        <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-white">{layer === "rain" && activeRadarFrame && selectedHour === 0 ? <><Radio size={12} />Radar {radarTime ?? "latest"} · RainViewer{radarFrames.length > 1 ? ` · ${radarFrameIndex + 1}/${radarFrames.length}` : ""}</> : <>{layerName(layer)} forecast · {formatSelectedTime(forecast.hours[selectedHour] ?? forecast.hours[0])}</>}</span>
-          {layer === "rain" && selectedHour === 0 && radarFrames.length > 1 && <button type="button" onClick={toggleRadarPlayback} className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/12 px-2.5 py-1.5 text-[10px] font-semibold text-white transition hover:bg-white/20" aria-label={radarPlaying ? "Pause radar animation" : "Play radar animation"} title={radarPlaying ? "Pause radar animation" : "Play radar animation"}>{radarPlaying ? <Pause size={12} /> : <Play size={12} />}{radarPlaying ? "Pause" : "Play"}</button>}
-        </div>
-      </div>
     </div>
-  );
+    {mode === "radar" ? <div className="rounded-2xl border border-[#343b34]/10 bg-white/40 p-3 sm:p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2"><div className="text-xs text-[#687066]"><b>Observed radar</b>{frame && <span> · Frame {timeLabel(frame.time * 1000)} · {frameAge} min ago</span>}</div><button type="button" disabled={loading} onClick={() => setRevision((current) => current + 1)} className="tap inline-flex items-center gap-1.5 rounded-xl bg-white/60 px-3 py-2 text-xs font-semibold disabled:opacity-50"><RefreshCw size={13} className={cn(loading && "animate-spin")} />{loading ? "Updating…" : "Refresh radar"}</button></div>
+      {error && <p role="alert" className="mt-2 rounded-xl bg-[#ead9d7]/70 p-3 text-xs text-[#92514d]">Radar could not be updated.{radar ? " Showing the last loaded frames." : " A blank map does not mean there is no rain. Try Refresh radar."}</p>}
+      {loading && !radar && <p role="status" className="mt-2 text-xs text-[#777b73]">Loading radar frames…</p>}
+      {frame && failedFrame === frame.path && <p role="alert" className="mt-2 text-xs text-[#92514d]">Some radar tiles failed to load. Try refreshing; missing imagery does not mean clear weather.</p>}
+      {showCoverage && coverageError && <p role="alert" className="mt-2 text-xs text-[#92514d]">Coverage shading could not fully load. Unshaded areas may also lack radar coverage.</p>}
+      {latestAge !== undefined && latestAge > 20 && <p role="status" className="mt-2 text-xs text-[#92514d]">Latest available frame is {latestAge} minutes old. Radar may be delayed.</p>}
+      {!!frames.length && <><div className="mt-3 flex items-center gap-2"><button type="button" disabled={frames.length < 2} onClick={() => { if (!playing && frameIndex >= frames.length - 1) setFrameIndex(0); setPlaying((current) => !current); }} aria-label={playing ? "Pause radar animation" : "Play radar animation"} className="tap grid size-10 shrink-0 place-items-center rounded-xl bg-[#343b34] text-white disabled:opacity-40">{playing ? <Pause size={14} /> : <Play size={14} />}</button><input aria-label="Radar history time" aria-valuetext={frame ? timeLabel(frame.time * 1000) : ""} type="range" min="0" max={frames.length - 1} value={frameIndex} onChange={(event) => { setPlaying(false); setFrameIndex(Number(event.target.value)); }} className="weather-timeline min-w-0 flex-1" /><button type="button" onClick={() => { setPlaying(false); setFrameIndex(frames.length - 1); }} className="tap shrink-0 rounded-xl bg-[#dce4d7]/70 px-3 py-2 text-xs font-semibold">Latest</button></div><div className="mt-2 flex justify-between text-[11px] text-[#777b73]"><span>{timeLabel(frames[0].time * 1000)}</span><span>{timeLabel(latest!.time * 1000)}</span></div></>}
+      <label className="mt-3 flex items-center gap-2 text-xs text-[#687066]"><input type="checkbox" checked={showCoverage} onChange={(event) => setShowCoverage(event.target.checked)} />Shade areas without radar coverage</label>
+      <p className="mt-2 text-[11px] leading-5 text-[#777b73]">Past observations only · auto-refresh every 5 min. Gray shading means no radar coverage. Frame times describe image generation, not an exact local observation time. <a href="https://www.rainviewer.com/api/color-schemes.html" target="_blank" rel="noreferrer" className="underline">RainViewer intensity color scale</a></p>
+    </div> : <div className="rounded-2xl border border-[#343b34]/10 bg-white/40 p-3"><div className="flex flex-wrap gap-x-3 gap-y-2 text-[11px] text-[#687066]">{forecastScales[layer].map((item) => <span key={item.label} className="inline-flex items-center gap-1.5"><i className="size-2.5 rounded-full" style={{ background: item.color }} />{item.label}</span>)}</div><p className="mt-2 text-[11px] text-[#777b73]">{layer === "rain" ? "Colors show hourly rain probability, not radar intensity." : `Colors show forecast ${layer}.`} Circles represent point forecasts; their size does not show a storm&apos;s extent.</p></div>}
+  </div>;
 }

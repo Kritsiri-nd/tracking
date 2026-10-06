@@ -19,12 +19,15 @@ export type WeatherGridPoint = {
 };
 
 export type WeatherExplorerForecast = {
+  fetchedAt: number;
   locationName: string;
   latitude: number;
   longitude: number;
   hours: string[];
   points: WeatherGridPoint[];
 };
+
+export type WeatherLocation = { name: string; latitude: number; longitude: number };
 
 export type RainViewerRadarFrame = {
   time: number;
@@ -66,8 +69,25 @@ const CHONBURI_REGION = {
   timezone: "Asia/Bangkok",
 };
 
+/** Bound both the response and JSON download so failed providers do not leave the UI loading forever. */
+async function fetchWeatherPayload<T>(url: string, signal?: AbortSignal): Promise<T> {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (signal?.aborted) abort();
+  else signal?.addEventListener("abort", abort, { once: true });
+  const timeout = setTimeout(abort, 15_000);
+  try {
+    const response = await fetch(url, { signal: controller.signal, cache: "no-store" });
+    if (!response.ok) throw new Error("Weather service is unavailable");
+    return await response.json() as T;
+  } finally {
+    clearTimeout(timeout);
+    signal?.removeEventListener("abort", abort);
+  }
+}
+
 /** Named points keep the forecast focused on the Chonburi coast instead of a generic city center. */
-const CHONBURI_LOCATIONS = [
+export const CHONBURI_LOCATIONS: WeatherLocation[] = [
   { name: "Bangsaen", latitude: 13.285, longitude: 100.925 },
   { name: "Chonburi", latitude: 13.361, longitude: 100.984 },
   { name: "Sriracha", latitude: 13.173, longitude: 100.931 },
@@ -76,12 +96,10 @@ const CHONBURI_LOCATIONS = [
 
 /** Fetch the latest observed radar frames for the map overlay. */
 export async function fetchRainViewerRadar(signal?: AbortSignal): Promise<RainViewerRadar> {
-  const response = await fetch("https://api.rainviewer.com/public/weather-maps.json", { signal, cache: "no-store" });
-  if (!response.ok) throw new Error("Radar service is unavailable");
-  const payload = await response.json() as RainViewerResponse;
-  const pastFrames = payload.radar?.past ?? [];
-  const nowcastFrames = payload.radar?.nowcast ?? [];
-  const frames = [...pastFrames, ...nowcastFrames];
+  const payload = await fetchWeatherPayload<RainViewerResponse>("https://api.rainviewer.com/public/weather-maps.json", signal);
+  const pastFrames = (payload.radar?.past ?? []).filter((frame) => Number.isFinite(frame.time) && typeof frame.path === "string" && frame.path.startsWith("/v2/radar/")).sort((a, b) => a.time - b.time);
+  const nowcastFrames: RainViewerRadarFrame[] = [];
+  const frames = pastFrames;
   if (!payload.host || !frames.length) throw new Error("No radar frames available");
   return {
     generated: payload.generated ?? Math.floor(Date.now() / 1000),
@@ -92,8 +110,8 @@ export async function fetchRainViewerRadar(signal?: AbortSignal): Promise<RainVi
   };
 }
 
-function parseLocalTime(value: string) {
-  return new Date(/[zZ]|[+-]\d\d:\d\d$/.test(value) ? value : `${value}:00+07:00`);
+export function parseLocalTime(value: string) {
+  return new Date(/[zZ]|[+-]\d\d:\d\d$/.test(value) ? value : `${value}+07:00`);
 }
 
 /** Fetch the next three local hourly rain snapshots for the Chonburi coast. */
@@ -124,33 +142,45 @@ export async function fetchRainForecast(signal?: AbortSignal): Promise<RainForec
 }
 
 /** Fetch the next 12 hours for the four Chonburi-coast locations used by Weather Explorer. */
-export async function fetchWeatherExplorerForecast(signal?: AbortSignal): Promise<WeatherExplorerForecast> {
+export async function fetchWeatherExplorerForecast(signal?: AbortSignal, customLocation?: WeatherLocation): Promise<WeatherExplorerForecast> {
+  const locations = customLocation ? [...CHONBURI_LOCATIONS, customLocation] : CHONBURI_LOCATIONS;
   const params = new URLSearchParams({
-    latitude: CHONBURI_LOCATIONS.map((point) => point.latitude.toFixed(4)).join(","),
-    longitude: CHONBURI_LOCATIONS.map((point) => point.longitude.toFixed(4)).join(","),
+    latitude: locations.map((point) => point.latitude.toFixed(4)).join(","),
+    longitude: locations.map((point) => point.longitude.toFixed(4)).join(","),
     hourly: "precipitation_probability,rain,showers,weather_code,temperature_2m,wind_speed_10m",
-    forecast_hours: "13",
+    forecast_hours: "15",
     timezone: CHONBURI_REGION.timezone,
   });
-  const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params.toString()}`, { signal, cache: "no-store" });
-  if (!response.ok) throw new Error("Weather service is unavailable");
-  const payload = await response.json() as OpenMeteoResponse | OpenMeteoResponse[];
+  const payload = await fetchWeatherPayload<OpenMeteoResponse | OpenMeteoResponse[]>(`https://api.open-meteo.com/v1/forecast?${params.toString()}`, signal);
   const responses = Array.isArray(payload) ? payload : [payload];
   const hours = responses[0]?.hourly?.time ?? [];
   if (!hours.length || !responses.length) throw new Error("No weather map data available");
+  if (responses.length !== locations.length) throw new Error("Incomplete location forecasts");
+  for (const item of responses) {
+    const hourly = item.hourly;
+    if (!hourly?.time || hourly.time.length !== hours.length || hourly.time.some((time, index) => time !== hours[index])) throw new Error("Forecast times do not match");
+    for (const values of [hourly.precipitation_probability, hourly.rain, hourly.showers, hourly.weather_code, hourly.temperature_2m, hourly.wind_speed_10m]) {
+      if (!values || values.length !== hours.length || values.some((value) => typeof value !== "number" || !Number.isFinite(value))) throw new Error("Incomplete weather readings. Please try again.");
+    }
+  }
 
+  const futureHours = hours.filter((time) => parseLocalTime(time).getTime() > Date.now()).slice(0, 12);
+  if (!futureHours.length) throw new Error("Forecast has no upcoming hours");
   return {
-    locationName: "Chonburi coast",
-    latitude: CHONBURI_REGION.latitude,
-    longitude: CHONBURI_REGION.longitude,
-    hours,
+    fetchedAt: Date.now(),
+    locationName: customLocation?.name ?? "Chonburi coast",
+    latitude: customLocation?.latitude ?? CHONBURI_REGION.latitude,
+    longitude: customLocation?.longitude ?? CHONBURI_REGION.longitude,
+    hours: futureHours,
     points: responses.map((item, pointIndex) => {
       const hourly = item.hourly;
       return {
-        name: CHONBURI_LOCATIONS[pointIndex]?.name ?? "Chonburi",
-        latitude: CHONBURI_LOCATIONS[pointIndex]?.latitude ?? CHONBURI_REGION.latitude,
-        longitude: CHONBURI_LOCATIONS[pointIndex]?.longitude ?? CHONBURI_REGION.longitude,
-        readings: hours.map((time, hourIndex) => ({
+        name: locations[pointIndex].name,
+        latitude: locations[pointIndex].latitude,
+        longitude: locations[pointIndex].longitude,
+        readings: futureHours.map((time) => {
+          const hourIndex = hours.indexOf(time);
+          return ({
           time,
           precipitationProbability: hourly?.precipitation_probability?.[hourIndex] ?? 0,
           rainMm: hourly?.rain?.[hourIndex] ?? 0,
@@ -158,7 +188,8 @@ export async function fetchWeatherExplorerForecast(signal?: AbortSignal): Promis
           weatherCode: hourly?.weather_code?.[hourIndex] ?? 0,
           temperatureC: hourly?.temperature_2m?.[hourIndex] ?? 0,
           windKmh: hourly?.wind_speed_10m?.[hourIndex] ?? 0,
-        })),
+          });
+        }),
       };
     }),
   };

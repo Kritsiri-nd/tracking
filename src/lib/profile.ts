@@ -68,7 +68,7 @@ function mapProfile(row: AnyRow, user: User): RunnerProfile {
     ...fallback,
     username: typeof row.username === "string" && row.username ? row.username : fallback.username,
     displayName: typeof row.display_name === "string" && row.display_name ? row.display_name : fallback.displayName,
-    maxHr: estimatedMaxHr ?? storedMaxHr ?? fallback.maxHr,
+    maxHr: storedMaxHr ?? estimatedMaxHr ?? fallback.maxHr,
     restingHr: numberValue(row.resting_hr),
     birthDate,
     heightCm: numberValue(row.height_cm),

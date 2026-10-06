@@ -1,143 +1,132 @@
 "use client";
 
-import { CloudLightning, CloudRain, CloudSun, Pause, Play, RefreshCw, Sun, Thermometer, Umbrella, Wind } from "lucide-react";
+import { CloudRain, LocateFixed, RefreshCw, Thermometer, Umbrella, Wind } from "lucide-react";
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchWeatherExplorerForecast, type WeatherExplorerForecast, type WeatherReading } from "@/lib/weather";
+import { useEffect, useState } from "react";
+import { CHONBURI_LOCATIONS, fetchWeatherExplorerForecast, parseLocalTime, type WeatherExplorerForecast, type WeatherLocation } from "@/lib/weather";
+import { findBestRunWindow, rainAmount, runAdvice, type WeatherLayer, type WeatherMode } from "@/lib/weather-planning";
 import { GlassCard, cn } from "./shared";
 
-type WeatherLayer = "rain" | "temperature" | "wind";
+const WeatherMap = dynamic(() => import("./weather-map").then((module) => module.WeatherMap), { ssr: false, loading: () => <div className="h-80 animate-pulse rounded-[22px] bg-[#eef1e8]" /> });
+const preferenceKey = "stridebook-weather-v1";
+const buttonStyle = "tap rounded-xl border border-[#343b34]/10 bg-white/45 px-3 py-2 text-xs font-semibold text-[#687066] disabled:opacity-50";
+const timeLabel = (time: number) => new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(time));
+const dateTimeLabel = (time: number) => new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Bangkok", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(time));
 
-function forecastIcon(code: number) {
-  if (code >= 95) return CloudLightning;
-  if (code >= 51 && code <= 82) return CloudRain;
-  if (code === 0) return Sun;
-  return CloudSun;
+function validLocation(value: unknown): value is WeatherLocation {
+  if (!value || typeof value !== "object") return false;
+  const point = value as WeatherLocation;
+  return typeof point.name === "string" && point.name.length > 0 && point.name.length <= 60 && Number.isFinite(point.latitude) && Math.abs(point.latitude) <= 90 && Number.isFinite(point.longitude) && Math.abs(point.longitude) <= 180;
 }
 
-function parseLocalTime(value: string) {
-  return new Date(/[zZ]|[+-]\d\d:\d\d$/.test(value) ? value : `${value}:00+07:00`);
-}
-
-function formatHour(value: string, index: number) {
-  if (index === 0) return "Now";
-  return new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit", hour12: false }).format(parseLocalTime(value));
-}
-
-function formatSelectedTime(value: string) {
-  return new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Bangkok", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(parseLocalTime(value));
-}
-
-function rainAmount(reading: WeatherReading) {
-  return reading.rainMm + reading.showersMm;
-}
-
-function layerValue(layer: WeatherLayer, reading: WeatherReading) {
-  if (layer === "temperature") return `${Math.round(reading.temperatureC)}°`;
-  if (layer === "wind") return `${Math.round(reading.windKmh)} km/h`;
-  return `${Math.round(reading.precipitationProbability)}%`;
-}
-
-function runAdvice(reading: WeatherReading) {
-  const amount = rainAmount(reading);
-  if (reading.precipitationProbability >= 65 || amount >= 1) return "Rain likely around this time";
-  if (reading.windKmh >= 30) return "Windy conditions — take care";
-  if (reading.precipitationProbability >= 35) return "Keep an eye on the sky";
-  return "Good time to run";
-}
-
-const WeatherMap = dynamic(() => import("./weather-map").then((module) => module.WeatherMap), {
-  ssr: false,
-  loading: () => <div className="route-map h-[280px] animate-pulse rounded-[22px] bg-[#eef1e8] sm:h-[500px]" />,
-});
-
-/** Detailed forecast explorer: a forecast grid, map layers, and a time slider for the next 12 hours. */
 export function RainForecast() {
   const [forecast, setForecast] = useState<WeatherExplorerForecast>();
-  const [selectedLocation, setSelectedLocation] = useState("Bangsaen");
+  const [location, setLocation] = useState<WeatherLocation>(CHONBURI_LOCATIONS[0]);
+  const [customLocation, setCustomLocation] = useState<WeatherLocation>();
   const [selectedHour, setSelectedHour] = useState(0);
+  const [mode, setMode] = useState<WeatherMode>("radar");
   const [layer, setLayer] = useState<WeatherLayer>("rain");
-  const [playing, setPlaying] = useState(false);
+  const [duration, setDuration] = useState(60);
+  const [initialized, setInitialized] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-
-  const loadForecast = useCallback(async (signal?: AbortSignal) => {
-    setLoading(true);
-    setError(false);
-    try {
-      const nextForecast = await fetchWeatherExplorerForecast(signal);
-      setForecast(nextForecast);
-      setSelectedLocation(nextForecast.points[0]?.name ?? "Bangsaen");
-      setSelectedHour(0);
-    } catch (loadError) {
-      if (!(loadError instanceof DOMException && loadError.name === "AbortError")) setError(true);
-    } finally {
-      if (!signal?.aborted) setLoading(false);
-    }
-  }, []);
+  const [revision, setRevision] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+  const [locating, setLocating] = useState(false);
+  const [locationError, setLocationError] = useState<string>();
 
   useEffect(() => {
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => void loadForecast(controller.signal), 0);
-    return () => {
-      window.clearTimeout(timer);
-      controller.abort();
-    };
-  }, [loadForecast]);
-
-  useEffect(() => {
-    if (!playing || !forecast) return;
-    const timer = window.setInterval(() => {
-      setSelectedHour((current) => {
-        if (current >= forecast.hours.length - 1) {
-          setPlaying(false);
-          return current;
+    const frame = window.requestAnimationFrame(() => {
+      try {
+        const saved = JSON.parse(window.localStorage.getItem(preferenceKey) ?? "null");
+        if (saved && validLocation(saved.location)) {
+          setLocation(saved.location);
+          if (!CHONBURI_LOCATIONS.some((point) => point.name === saved.location.name && point.latitude === saved.location.latitude && point.longitude === saved.location.longitude)) setCustomLocation(saved.location);
         }
-        return current + 1;
-      });
-    }, 1100);
-    return () => window.clearInterval(timer);
-  }, [forecast, playing]);
+        if (saved && [30, 60, 90].includes(saved.duration)) setDuration(saved.duration);
+      } catch { /* Unavailable storage does not prevent checking weather. */ }
+      setInitialized(true);
+    });
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => { window.cancelAnimationFrame(frame); window.clearInterval(timer); };
+  }, []);
+  useEffect(() => {
+    if (!initialized) return;
+    try { window.localStorage.setItem(preferenceKey, JSON.stringify({ location, duration })); } catch { /* Keep preferences in memory. */ }
+  }, [initialized, location, duration]);
 
-  const selectedPoint = useMemo(() => forecast?.points.find((point) => point.name === selectedLocation) ?? forecast?.points[0], [forecast, selectedLocation]);
-  const selectedReading = selectedPoint?.readings[selectedHour] ?? selectedPoint?.readings[0];
-  const forecastItems = useMemo(() => selectedPoint?.readings ?? [], [selectedPoint]);
+  useEffect(() => {
+    if (!initialized) return;
+    let controller: AbortController;
+    let active = true;
+    const load = () => {
+      controller?.abort();
+      controller = new AbortController();
+      const signal = controller.signal;
+      setLoading(true); setError(false);
+      void fetchWeatherExplorerForecast(signal, customLocation).then((next) => {
+        if (!active || signal.aborted) return;
+        setForecast(next);
+        setNow(Date.now());
+        setSelectedHour((current) => Math.min(current, next.hours.length - 1));
+      }).catch(() => { if (active && !signal.aborted) setError(true); })
+        .finally(() => { if (active && !signal.aborted) setLoading(false); });
+    };
+    const initial = window.setTimeout(load, 0);
+    const timer = window.setInterval(load, 10 * 60_000);
+    return () => { active = false; controller?.abort(); window.clearTimeout(initial); window.clearInterval(timer); };
+  }, [initialized, customLocation, revision]);
 
-  const bestWindow = useMemo(() => {
-    if (!forecastItems.length) return "—";
-    const best = forecastItems.slice(0, 6).reduce((current, item) => {
-      const score = item.precipitationProbability + rainAmount(item) * 20;
-      const currentScore = current.precipitationProbability + rainAmount(current) * 20;
-      return score < currentScore ? item : current;
-    }, forecastItems[0]);
-    const bestIndex = forecastItems.indexOf(best);
-    return formatHour(best.time, bestIndex);
-  }, [forecastItems]);
+  const selectedPoint = forecast?.points.find((point) => point.name === location.name && point.latitude === location.latitude && point.longitude === location.longitude);
+  const readings = selectedPoint?.readings;
+  const selectedReading = readings?.[selectedHour];
+  const ageMinutes = forecast ? Math.max(0, Math.floor((now - forecast.fetchedAt) / 60_000)) : undefined;
+  const stale = ageMinutes !== undefined && ageMinutes > 30;
+  const bestWindow = readings && !stale ? findBestRunWindow(readings, duration, now) : undefined;
+  const locations = customLocation ? [...CHONBURI_LOCATIONS, customLocation] : CHONBURI_LOCATIONS;
 
-  return (
-    <GlassCard className="overflow-hidden p-0">
-      <div className="p-5 pb-4 sm:p-6 sm:pb-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex items-start gap-3"><div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[#dce4d7] text-[#53644e]"><Umbrella size={20} /></div><div><p className="text-xs font-semibold uppercase tracking-[.18em] text-[#85887f]">Rain outlook</p><h2 className="mt-1 text-xl font-medium tracking-[-.025em]">Weather Explorer</h2><p className="mt-1 text-sm text-[#777b73]">Chonburi coast · 4-area forecast for the next 12 hours</p></div></div>
-          <button type="button" onClick={() => void loadForecast()} disabled={loading} className="tap inline-flex items-center gap-2 rounded-2xl border border-[#343b34]/10 bg-white/55 px-3 py-2 text-xs font-semibold text-[#687066] disabled:cursor-wait disabled:opacity-50"><RefreshCw size={14} className={cn(loading && "animate-spin")} />Refresh</button>
+  function selectLocation(name: string) {
+    const next = locations.find((point) => point.name === name);
+    if (next) { setLocation(next); setLocationError(undefined); }
+  }
+  function pinLocation(next: WeatherLocation) {
+    if (!validLocation(next)) return;
+    setCustomLocation(next); setLocation(next); setSelectedHour(0); setLocationError(undefined);
+  }
+  function locate() {
+    if (!navigator.geolocation) { setLocationError("Your browser does not support location. Tap the map to choose a place."); return; }
+    setLocating(true); setLocationError(undefined);
+    navigator.geolocation.getCurrentPosition((position) => {
+      pinLocation({ name: "My running spot", latitude: position.coords.latitude, longitude: position.coords.longitude });
+      setLocating(false);
+    }, (failure) => {
+      setLocationError(failure.code === 1 ? "Location access was declined. You can tap the map to choose your running spot." : "Could not get your location. Try again or tap the map.");
+      setLocating(false);
+    }, { timeout: 10_000, maximumAge: 60_000, enableHighAccuracy: false });
+  }
+
+  return <GlassCard className="weather-explorer overflow-hidden p-5 sm:p-6">
+    <div className="flex flex-wrap items-start justify-between gap-3"><div className="flex gap-3"><div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[#dce4d7] text-[#53644e]"><Umbrella size={20} /></div><div><p className="text-xs font-semibold uppercase tracking-[.16em] text-[#85887f]">Plan your run</p><h2 className="mt-1 text-xl font-medium">Weather Explorer</h2><p className="mt-1 text-sm text-[#777b73]">Check rain nearby, then compare times to head out.</p></div></div></div>
+    <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Weather map mode">{([{ id: "radar", label: "Radar · past 2 hours" }, { id: "forecast", label: "Forecast · next 12 hours" }] as const).map((item) => <button type="button" key={item.id} aria-pressed={mode === item.id} onClick={() => setMode(item.id)} className={cn(buttonStyle, mode === item.id && "weather-choice-active")}>{item.label}</button>)}</div>
+    <div className="mt-4 flex flex-wrap items-center gap-2">{locations.map((point) => <button type="button" key={point.name} aria-pressed={location.name === point.name} onClick={() => selectLocation(point.name)} className={cn(buttonStyle, location.name === point.name && "weather-choice-active")}>{point.name}</button>)}<button type="button" onClick={locate} disabled={locating} className={cn(buttonStyle, "inline-flex items-center gap-1.5")}><LocateFixed size={14} />{locating ? "Locating…" : "Use my location"}</button></div>
+    <p className="mb-3 mt-2 text-[11px] text-[#777b73]">{location.name} · {location.latitude.toFixed(4)}, {location.longitude.toFixed(4)} · Tap an area marker to select it, or tap the map to pin a running spot. Your choice is remembered on this device.</p>
+    {locationError && <p role="alert" className="mb-3 rounded-xl bg-[#ead9d7]/60 p-3 text-xs text-[#92514d]">{locationError}</p>}
+    {mode === "forecast" && <div role="group" aria-label="Forecast map layer" className="mb-3 flex flex-wrap gap-2">{([{ id: "rain", label: "Rain chance", icon: CloudRain }, { id: "temperature", label: "Temperature", icon: Thermometer }, { id: "wind", label: "Wind", icon: Wind }] as const).map(({ id, label, icon: Icon }) => <button type="button" key={id} aria-pressed={layer === id} onClick={() => setLayer(id)} className={cn(buttonStyle, "inline-flex items-center gap-1.5", layer === id && "weather-choice-active")}><Icon size={14} />{label}</button>)}</div>}
+    <WeatherMap forecast={forecast} selectedHour={selectedHour} layer={layer} mode={mode} selectedLocation={location} onSelectLocation={selectLocation} onPin={pinLocation} />
+    {mode === "forecast" && <div className="mt-4 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-[#777b73]">Open-Meteo · {forecast ? `Retrieved ${ageMinutes} min ago` : "Hourly forecast"}{loading ? " · Updating…" : ""}</p><button type="button" disabled={loading} onClick={() => setRevision((current) => current + 1)} className={cn(buttonStyle, "inline-flex items-center gap-1.5")}><RefreshCw size={13} className={cn(loading && "animate-spin")} />Refresh forecast</button></div>
+      {error && <p role="alert" className="rounded-xl bg-[#ead9d7]/60 p-3 text-xs text-[#92514d]">Forecast could not be updated.{selectedPoint ? " Showing the last retrieved forecast." : " Try Refresh forecast."}</p>}
+      {stale && <p role="status" className="rounded-xl bg-[#ead9d7]/60 p-3 text-xs text-[#92514d]">This forecast was retrieved over 30 minutes ago. Refresh before comparing run times.</p>}
+      {!selectedPoint ? <p role="status" className="rounded-2xl bg-white/40 p-4 text-sm text-[#777b73]">{loading ? "Loading forecast for this running spot…" : "No forecast available for this spot."}</p> : <>
+        <div className="rounded-2xl border border-[#343b34]/10 bg-white/40 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><b className="text-sm">Compare run times</b><div role="group" aria-label="Run duration" className="flex gap-1">{[30, 60, 90].map((minutes) => <button type="button" key={minutes} aria-pressed={duration === minutes} onClick={() => setDuration(minutes)} className={cn(buttonStyle, duration === minutes && "weather-choice-active")}>{minutes} min</button>)}</div></div>
+          {bestWindow ? <><p className="mt-3 text-lg font-semibold">{dateTimeLabel(bestWindow.start)} – {timeLabel(bestWindow.end)}</p><p className="mt-1 text-xs text-[#687066]">Lowest combined rain, heat and wind score in the next 6 hours · {duration}-minute run</p><p className="mt-2 text-xs text-[#777b73]">Up to {Math.round(bestWindow.maxRainProbability)}% rain chance · {Math.round(bestWindow.maxTemperatureC)}°C · {Math.round(bestWindow.maxWindKmh)} km/h wind</p><button type="button" onClick={() => { const index = readings!.findIndex((reading) => parseLocalTime(reading.time).getTime() > bestWindow.start); if (index >= 0) setSelectedHour(index); }} className={cn(buttonStyle, "mt-3")}>View this hour</button></> : <p className="mt-3 text-sm text-[#777b73]">{stale ? "Refresh to compare times." : "No suitable forecast window for the full run. Check the hours below or consider an indoor session."}</p>}
+          <p className="mt-3 text-[11px] leading-5 text-[#777b73]">Compares hourly forecasts across your whole run. Excludes forecast thunderstorms, temperatures ≥35°C and winds ≥40 km/h. This is a comparison, not a guarantee of dry or safe conditions.</p>
         </div>
-      </div>
-
-      {loading && !forecast ? <div className="mx-5 mb-5 h-[280px] animate-pulse rounded-[22px] bg-[#eef1e8] sm:mx-6 sm:h-[500px]" /> : error || !forecast ? <div className="mx-5 mb-5 flex min-h-32 items-center justify-between gap-3 rounded-2xl border border-[#a75b55]/15 bg-[#ead9d7]/45 px-4 py-3 text-sm text-[#92514d] sm:mx-6"><span>Weather Explorer is temporarily unavailable.</span><button type="button" onClick={() => void loadForecast()} className="tap rounded-xl bg-white/70 px-3 py-2 text-xs font-semibold">Try again</button></div> : <>
-        <div className="scrollbar-none mx-5 mb-3 flex gap-2 overflow-x-auto pb-1 sm:mx-6">{forecast.points.map((point) => <button key={point.name} type="button" onClick={() => { setPlaying(false); setSelectedLocation(point.name); }} className={cn("tap shrink-0 rounded-full border px-4 py-2 text-xs font-semibold transition", selectedLocation === point.name ? "border-[#7f9277] bg-[#dce4d7]/80 text-[#53644e]" : "border-[#343b34]/8 bg-white/38 text-[#777b73] hover:bg-white/65")}>{point.name}</button>)}</div>
-        <div className="relative mx-5 sm:mx-6">
-          <WeatherMap forecast={forecast} selectedHour={selectedHour} layer={layer} selectedLocationName={selectedLocation} />
-          <div className="absolute right-3 top-3 z-[500] flex rounded-2xl border border-white/70 bg-[#faf8f2]/88 p-1 shadow-sm backdrop-blur-sm"><button type="button" title="Rain layer" aria-label="Rain layer" onClick={() => setLayer("rain")} className={cn("tap grid size-10 place-items-center rounded-xl text-[#687066]", layer === "rain" && "bg-[#343b34] text-white")}><CloudRain size={17} /></button><button type="button" title="Temperature layer" aria-label="Temperature layer" onClick={() => setLayer("temperature")} className={cn("tap grid size-10 place-items-center rounded-xl text-[#687066]", layer === "temperature" && "bg-[#343b34] text-white")}><Thermometer size={17} /></button><button type="button" title="Wind layer" aria-label="Wind layer" onClick={() => setLayer("wind")} className={cn("tap grid size-10 place-items-center rounded-xl text-[#687066]", layer === "wind" && "bg-[#343b34] text-white")}><Wind size={17} /></button></div>
-        </div>
-
-        <div className="p-5 pt-4 sm:p-6 sm:pt-5">
-          <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center"><div><p className="text-xs font-semibold uppercase tracking-[.16em] text-[#85887f]">{selectedReading ? runAdvice(selectedReading) : "Forecast ready"}</p><div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1"><h3 className="text-2xl font-medium tracking-[-.04em]">{selectedReading ? layerValue(layer, selectedReading) : "—"}</h3><span className="text-sm text-[#777b73]">{forecast.hours[selectedHour] ? formatSelectedTime(forecast.hours[selectedHour]) : ""}</span></div></div><div className="rounded-2xl border border-[#343b34]/8 bg-white/42 px-3 py-2 text-xs text-[#687066]"><span className="font-semibold">Best window</span><span className="ml-2">{bestWindow}</span></div></div>
-          <div className="mt-5 rounded-2xl border border-[#343b34]/8 bg-white/38 p-3 sm:p-4"><div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2 text-xs font-semibold text-[#586254]"><button type="button" onClick={() => setPlaying((current) => !current)} className="tap grid size-10 place-items-center rounded-xl bg-[#343b34] text-white" aria-label={playing ? "Pause forecast animation" : "Play forecast animation"} title={playing ? "Pause forecast animation" : "Play forecast animation"}>{playing ? <Pause size={15} /> : <Play size={15} />}</button><span>{formatHour(forecast.hours[selectedHour] ?? forecast.hours[0], selectedHour)}</span></div><span className="text-[11px] text-[#858880]">{selectedHour + 1} / {forecast.hours.length} hours</span></div><input aria-label="Forecast time" type="range" min="0" max={Math.max(forecast.hours.length - 1, 0)} value={selectedHour} onChange={(event) => { setPlaying(false); setSelectedHour(Number(event.target.value)); }} className="weather-timeline mt-3 w-full" /><div className="mt-2 flex justify-between text-[10px] text-[#92968d]"><span>Now</span><span>+6h</span><span>+12h</span></div></div>
-          <div className="scrollbar-none mt-3 flex gap-2 overflow-x-auto pb-1">{forecastItems.map((item, index) => { const Icon = forecastIcon(item.weatherCode); const amount = rainAmount(item); return <button key={item.time} type="button" onClick={() => { setPlaying(false); setSelectedHour(index); }} className={cn("min-w-[88px] rounded-2xl border p-3 text-left transition", selectedHour === index ? "border-[#7f9277] bg-[#dce4d7]/70 shadow-sm" : "border-[#343b34]/8 bg-white/38 hover:bg-white/65")}><div className="flex items-center justify-between gap-2"><span className="text-xs font-semibold text-[#586254]">{formatHour(item.time, index)}</span><Icon size={15} className="text-[#7f9277]" /></div><div className="mt-2 text-lg font-semibold text-[#30342f]">{Math.round(item.precipitationProbability)}%</div><div className="mt-1 text-[10px] text-[#858880]">{amount.toFixed(1)} mm · {Math.round(item.temperatureC)}°</div></button>; })}</div>
-          {selectedReading && <div className="mt-4 grid grid-cols-3 gap-2"><div className="rounded-2xl bg-[#eef1e8]/70 p-3"><span className="block text-[10px] uppercase tracking-[.12em] text-[#858880]">Rain amount</span><strong className="mt-1 block text-sm text-[#586254]">{rainAmount(selectedReading).toFixed(1)} mm/h</strong></div><div className="rounded-2xl bg-[#eef1e8]/70 p-3"><span className="block text-[10px] uppercase tracking-[.12em] text-[#858880]">Temperature</span><strong className="mt-1 block text-sm text-[#586254]">{Math.round(selectedReading.temperatureC)}°C</strong></div><div className="rounded-2xl bg-[#eef1e8]/70 p-3"><span className="block text-[10px] uppercase tracking-[.12em] text-[#858880]">Wind</span><strong className="mt-1 block text-sm text-[#586254]">{Math.round(selectedReading.windKmh)} km/h</strong></div></div>}
-          <p className="mt-4 text-[11px] text-[#92968d]">Forecast model for the Chonburi coast from Open-Meteo. Map colors show the selected hour; tap an area, layer, or time to explore.</p>
-        </div>
+        {selectedReading && <><div><p className="text-sm font-semibold">{runAdvice(selectedReading)}</p><p className="mt-1 text-xs text-[#777b73]">Hour ending {dateTimeLabel(parseLocalTime(selectedReading.time).getTime())}</p></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{[["Rain chance", `${Math.round(selectedReading.precipitationProbability)}%`], ["Rain total / hour", `${rainAmount(selectedReading).toFixed(1)} mm`], ["Temperature", `${Math.round(selectedReading.temperatureC)}°C`], ["Wind", `${Math.round(selectedReading.windKmh)} km/h`]].map(([label, value]) => <div key={label} className="rounded-2xl bg-white/40 p-3"><span className="block text-[10px] text-[#858880]">{label}</span><b className="mt-1 block text-sm">{value}</b></div>)}</div></>}
+        <label className="block text-xs font-semibold text-[#687066]">Forecast hour<input type="range" min="0" max={Math.max((readings?.length ?? 1) - 1, 0)} value={selectedHour} aria-label="Forecast time" aria-valuetext={selectedReading ? dateTimeLabel(parseLocalTime(selectedReading.time).getTime()) : ""} onChange={(event) => setSelectedHour(Number(event.target.value))} className="weather-timeline mt-3 w-full" /></label>
+        <div className="scrollbar-none flex gap-2 overflow-x-auto pb-2">{readings?.map((reading, index) => <button type="button" key={reading.time} aria-pressed={selectedHour === index} onClick={() => setSelectedHour(index)} className={cn("min-w-[100px] shrink-0 rounded-2xl border p-3 text-left", selectedHour === index ? "border-[#7f9277] bg-[#dce4d7]/70" : "border-[#343b34]/10 bg-white/40")}><span className="block text-xs font-semibold">{dateTimeLabel(parseLocalTime(reading.time).getTime())}</span><b className="mt-2 block text-lg">{Math.round(reading.precipitationProbability)}%</b><span className="mt-1 block text-[10px] text-[#777b73]">{rainAmount(reading).toFixed(1)} mm · {Math.round(reading.temperatureC)}°C</span></button>)}</div>
+        <p className="text-[11px] leading-5 text-[#777b73]">Rain amounts and probabilities describe the hour ending at each shown time. Temperature and wind are hourly model values. A point forecast does not show the exact shape or arrival time of a rain cloud.</p>
       </>}
-    </GlassCard>
-  );
+    </div>}
+  </GlassCard>;
 }

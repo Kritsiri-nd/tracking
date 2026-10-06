@@ -6,11 +6,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getBangkokDateKey, getBangkokWeekDates, shiftBangkokDateKey } from "@/lib/date";
 import { parseFitFile } from "@/lib/fit";
-import { findMatchingWorkout, isDuplicateActivity, isRouteRepair } from "@/lib/import-logic";
-import { getWorkoutStatus } from "@/lib/progress";
+import { importActivities } from "@/lib/import-logic";
 import { initialState } from "@/lib/mock-data";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
-import { defaultRunnerProfile, estimateMaxHrFromBirthDate, loadRunnerProfile, saveRunnerProfile } from "@/lib/profile";
+import { defaultRunnerProfile, loadRunnerProfile, saveRunnerProfile } from "@/lib/profile";
 import { deleteWorkoutFromSupabase, loadCloudState, syncStateToSupabase, uploadShoeImage } from "@/lib/supabase-sync";
 import { downloadGpx } from "@/lib/download";
 import type { Activity, LocalState, MonthlyGoal, PlannedWorkout, RunnerProfile, Shoe } from "@/lib/types";
@@ -87,8 +86,7 @@ export function QuietRunApp() {
       try {
         setProfile((current) => {
           const next = { ...current, ...(JSON.parse(saved) as Partial<RunnerProfile>) };
-          const estimatedMaxHr = estimateMaxHrFromBirthDate(next.birthDate);
-          return estimatedMaxHr ? { ...next, maxHr: estimatedMaxHr } : next;
+          return next;
         });
       } catch {
         window.localStorage.removeItem("stridebook-profile-v1");
@@ -205,6 +203,7 @@ export function QuietRunApp() {
   const retryCloudSync = () => { setCloudStatus("saving"); setSyncRevision((current) => current + 1); };
   /** Parse one or more FIT files in the browser; persistence happens only after review. */
   async function handleFiles(files: File[]) {
+    if (loading || !files.length) return;
     const fitFiles = files.filter((file) => file.name.toLowerCase().endsWith(".fit"));
     if (!fitFiles.length) {
       setUploadError("Stridebook accepts .FIT files only in this draft.");
@@ -212,7 +211,7 @@ export function QuietRunApp() {
     }
     setLoading(true); setUploadError(undefined);
     const parsed: Activity[] = [];
-    const errors: string[] = [];
+    const errors: string[] = files.filter((file) => !file.name.toLowerCase().endsWith(".fit")).map((file) => `${file.name}: Only .FIT files are supported.`);
     for (const file of fitFiles) {
       try {
         parsed.push(await parseFitFile(file, "me"));
@@ -227,49 +226,15 @@ export function QuietRunApp() {
   /** Commit reviewed activities and link each one to a matching plan when possible. */
   function confirmImport() {
     if (!previews.length) return;
-    const imported: Activity[] = [];
-    const matchedWorkouts = new Map<string, PlannedWorkout>();
-    const duplicates: string[] = [];
-    const repairedActivityIds = new Set<string>();
-    for (const preview of previews) {
-      const existingActivity = state.activities.find((activity) => isRouteRepair(preview, activity));
-      if (existingActivity) {
-        imported.push({
-          ...preview,
-          id: existingActivity.id,
-          title: existingActivity.title,
-          type: existingActivity.type,
-          shoeId: existingActivity.shoeId,
-          rpe: existingActivity.rpe,
-          note: existingActivity.note,
-        });
-        repairedActivityIds.add(existingActivity.id);
-        continue;
-      }
-      if (isDuplicateActivity(preview, [...state.activities, ...imported])) {
-        duplicates.push(preview.title);
-        continue;
-      }
-      const matching = findMatchingWorkout(preview, state.workouts.filter((workout) => !matchedWorkouts.has(workout.id)));
-      const updatedPreview = matching ? { ...preview, type: matching.type, title: matching.title } : preview;
-      imported.push(updatedPreview);
-      if (matching) matchedWorkouts.set(matching.id, matching);
-    }
+    const { state: nextState, imported, skipped } = importActivities(state, previews);
     if (!imported.length) {
       setUploadError("These activities already exist. Duplicate import was stopped.");
       return;
     }
-    setState((current) => ({
-      ...current,
-      activities: [...current.activities.filter((activity) => !repairedActivityIds.has(activity.id)), ...imported],
-      workouts: current.workouts.map((workout) => {
-        const activity = imported.find((item) => matchedWorkouts.get(workout.id) && findMatchingWorkout(item, [workout])?.id === workout.id);
-        return activity ? { ...workout, activityId: activity.id, status: getWorkoutStatus(workout, activity) } : workout;
-      }),
-    }));
-    notify(`${imported.length} activit${imported.length === 1 ? "y" : "ies"} saved.`);
+    setState(nextState);
+    notify(`${imported.length} activit${imported.length === 1 ? "y" : "ies"} saved.${skipped ? ` Skipped ${skipped} duplicate${skipped === 1 ? "" : "s"}.` : ""}`);
     setPreviews([]); setActiveActivity(imported[imported.length - 1]);
-    setUploadError(duplicates.length ? `Skipped ${duplicates.length} duplicate file${duplicates.length === 1 ? "" : "s"}.` : undefined);
+    setUploadError(undefined);
   }
   /** Keep workout mutations in one place so Today and Plan share identical behavior. */
   function updateWorkout(workoutId: string, updates: Partial<PlannedWorkout>) {
@@ -300,9 +265,9 @@ export function QuietRunApp() {
   /** Save account settings to Supabase, with local storage as a fast fallback. */
   async function handleProfileSave(nextProfile: RunnerProfile) {
     const safeProfile = { ...nextProfile, maxHr: Math.min(240, Math.max(100, Math.round(nextProfile.maxHr || 190))) };
+    if (supabase && session?.user) await saveRunnerProfile(safeProfile);
     setProfile(safeProfile);
     window.localStorage.setItem("stridebook-profile-v1", JSON.stringify(safeProfile));
-    if (supabase && session?.user) await saveRunnerProfile(safeProfile);
     notify("Profile saved.");
   }
   /** Persist a Max HR edited directly from the activity detail page. */
@@ -352,10 +317,10 @@ export function QuietRunApp() {
       {toast && <div role="status" className="fixed inset-x-4 top-4 z-[60] mx-auto max-w-sm rounded-2xl border border-[#7f9277]/20 bg-[#343b34] px-4 py-3 text-center text-sm font-semibold text-white shadow-[0_14px_35px_rgba(53,48,39,.18)]">{toast}</div>}
       <main className="relative mx-auto w-full max-w-[1500px] px-4 pb-6 pt-5 sm:px-6 md:px-8 md:pt-7 lg:px-10">
         <Header profile={profile} themeMode={themeMode} onToggleTheme={() => setThemeMode((current) => current === "dark" ? "light" : "dark")} onOpenProfile={openProfile} />
-        {showProfile ? <ProfileView key={`${profile.id}-${profile.maxHr}`} profile={profile} onBack={closeProfile} onSave={handleProfileSave} onSignOut={supabase ? signOut : undefined} onOpenGear={() => openTab("gear")} /> : activeActivity ? <ActivityDetail key={activeActivity.id} activity={activeActivity} workout={activeWorkout} shoes={state.shoes} maxHr={profile.maxHr} onMaxHrChange={handleMaxHrChange} onBack={() => setActiveActivity(undefined)} onShoeChange={(shoeId) => updateActivity(activeActivity.id, { shoeId })} onActivityUpdate={(updates) => updateActivity(activeActivity.id, updates)} onExportGpx={() => downloadGpx(activeActivity)} /> : <>
+        {showProfile ? <ProfileView key={profile.id} profile={profile} onBack={closeProfile} onSave={handleProfileSave} onSignOut={supabase ? signOut : undefined} onOpenGear={() => openTab("gear")} onSuuntoImport={(activity) => { setPreviews([activity]); setUploadError(undefined); setActiveActivity(undefined); openTab("upload"); }} /> : activeActivity ? <ActivityDetail key={activeActivity.id} activity={activeActivity} workout={activeWorkout} shoes={state.shoes} maxHr={profile.maxHr} onMaxHrChange={handleMaxHrChange} onBack={() => setActiveActivity(undefined)} onShoeChange={(shoeId) => updateActivity(activeActivity.id, { shoeId })} onActivityUpdate={(updates) => updateActivity(activeActivity.id, updates)} onExportGpx={() => downloadGpx(activeActivity)} /> : <>
           {tab === "today" && <TodayView state={state} personId="me" today={today} weekDates={visibleWeekDates} weekOffset={weekOffset} onWeekChange={setWeekOffset} onWorkoutUpdate={updateWorkout} />}
           {tab === "calendar" && <CalendarView state={state} personId="me" today={today} onAdd={addWorkout} onUpdate={updateWorkout} onDelete={deleteWorkout} />}
-          {tab === "upload" && <UploadView previews={previews} loading={loading} error={uploadError} onFiles={handleFiles} onReset={() => { setPreviews([]); setUploadError(undefined); }} onConfirm={confirmImport} />}
+          {tab === "upload" && <UploadView cloudEnabled={Boolean(session)} previews={previews} loading={loading} error={uploadError} onFiles={handleFiles} onReset={() => { setPreviews([]); setUploadError(undefined); }} onConfirm={confirmImport} />}
           {tab === "progress" && <ProgressView state={state} personId="me" today={today} onGoalSave={saveMonthlyGoal} onOpenActivity={setActiveActivity} />}
           {tab === "gear" && <GearView state={state} personId="me" onShoeAdd={addShoe} onShoeUpdate={updateShoe} onShoeRetire={retireShoe} onShoeImageChange={updateShoeImage} />}
         </>}

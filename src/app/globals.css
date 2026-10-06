@@ -63,6 +63,20 @@ button { -webkit-tap-highlight-color: transparent; }
 .weather-timeline::-webkit-slider-thumb { appearance: none; width: 18px; height: 18px; border: 3px solid #f7f4ec; border-radius: 50%; background: #343b34; box-shadow: 0 2px 8px rgba(52,59,52,.24); }
 .weather-timeline::-moz-range-thumb { width: 13px; height: 13px; border: 3px solid #f7f4ec; border-radius: 50%; background: #343b34; box-shadow: 0 2px 8px rgba(52,59,52,.24); }
 
+.dashboard-theme .weather-explorer button[aria-pressed="true"] {
+  background: #a6ff00 !important;
+  border-color: #a6ff00 !important;
+  color: #111411 !important;
+}
+.dashboard-theme-light .weather-explorer button[aria-pressed="true"] {
+  background: #343b34 !important;
+  border-color: #343b34 !important;
+  color: #ffffff !important;
+}
+.dashboard-theme .weather-explorer button[aria-pressed="true"] :is(span, b, svg) {
+  color: inherit !important;
+}
+
 .route-map .leaflet-container { font: inherit; background: #e8e6dc; }
 .route-map .leaflet-tile { filter: saturate(.72) sepia(.08) brightness(1.06); }
 .route-map .leaflet-control-attribution { border-radius: 10px 0 0; background: rgba(250, 248, 242, .8); color: #687066; font-size: 9px; }
@@ -290,6 +304,13 @@ body {
 .dashboard-theme-light .dashboard-metric-card:hover { border-color: rgba(127,146,119,.45) !important; background: rgba(255,255,255,.68) !important; }
 .dashboard-theme-light .dashboard-metric-label { color: #74786f !important; }
 .dashboard-theme-light .dashboard-metric-value { color: #292d28 !important; }
+
+.dashboard-runner-carousel { isolation: isolate; }
+.dashboard-carousel-shade { position: absolute; inset: 0; z-index: 15; pointer-events: none; background: linear-gradient(180deg, transparent 48%, rgba(10,13,11,.76) 100%); }
+.dashboard-carousel-copy { position: absolute; right: 1rem; bottom: 1rem; left: 1rem; z-index: 20; display: flex; flex-direction: column; gap: .15rem; pointer-events: none; }
+.dashboard-carousel-copy span { color: rgba(225,235,216,.68); font-size: 9px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+.dashboard-carousel-copy strong { color: #f2f4ee; font-size: .88rem; font-weight: 650; letter-spacing: -.02em; }
+.dashboard-theme-light .dashboard-carousel-shade { background: linear-gradient(180deg, transparent 45%, rgba(25,31,25,.62) 100%); }
 
 @media (max-width: 767px) {
   .dashboard-page-intro { align-items: flex-start; flex-direction: column; min-height: 0; padding-bottom: .85rem; }

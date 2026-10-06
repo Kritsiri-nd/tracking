@@ -2,9 +2,9 @@
 
 import { Activity as ActivityIcon, Clock3, Footprints, Route, TrendingUp } from "lucide-react";
 import Image from "next/image";
+import { useEffect, useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { shortDate } from "./shared";
-import { GlassCard, Metric } from "./shared";
+import { GlassCard, Metric, cn, shortDate } from "./shared";
 import type { Activity, PersonId, PlannedWorkout } from "@/lib/types";
 
 function formatDuration(seconds: number) {
@@ -30,8 +30,15 @@ type WeeklyOverviewProps = {
   actualKm: number;
 };
 
+const runnerSlides = [
+  { src: "/stridebook-runners.png", alt: "Two runners ready for the week", eyebrow: "Your week in motion", caption: "Keep moving together." },
+  { src: "/stridebook-runners-race.png", alt: "Two runners celebrating after a race", eyebrow: "Race day energy", caption: "Show up. Finish strong." },
+  { src: "/stridebook-runners-everyday.png", alt: "Two friends enjoying an active day", eyebrow: "Everyday movement", caption: "Build a rhythm that lasts." },
+];
+
 /** A compact weekly performance summary powered by the same Today data. */
 export function WeeklyOverview({ weekDates, activities, workouts, personId, plannedKm, actualKm }: WeeklyOverviewProps) {
+  const [activeSlide, setActiveSlide] = useState(0);
   const weekActivities = activities.filter((activity) => activity.personId === personId && weekDates.includes(activity.date));
   const weekWorkouts = workouts.filter((workout) => workout.personId === personId && weekDates.includes(workout.date));
   const durationSec = weekActivities.reduce((sum, activity) => sum + activity.durationSec, 0);
@@ -43,6 +50,11 @@ export function WeeklyOverview({ weekDates, activities, workouts, personId, plan
     planned: weekWorkouts.filter((workout) => workout.date === date).reduce((sum, workout) => sum + (workout.distanceKm ?? 0), 0),
     actual: weekActivities.filter((activity) => activity.date === date).reduce((sum, activity) => sum + activity.distanceKm, 0),
   }));
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setActiveSlide((current) => (current + 1) % runnerSlides.length), 3000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   return (
     <GlassCard className="overflow-hidden p-4 sm:p-5">
@@ -60,7 +72,12 @@ export function WeeklyOverview({ weekDates, activities, workouts, personId, plan
             <div className="h-24"><ResponsiveContainer width="100%" height="100%"><BarChart data={chartData} barGap={3} margin={{ top: 4, right: 0, left: -24, bottom: 0 }}><CartesianGrid vertical={false} stroke="rgba(255,255,255,.08)" /><XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: "#858b81", fontSize: 10 }} /><YAxis hide /><Tooltip cursor={{ fill: "rgba(166,255,0,.05)" }} contentStyle={{ borderRadius: 14, border: "1px solid rgba(255,255,255,.10)", background: "#242824", color: "#f2f4ee", fontSize: 12 }} /><Bar dataKey="planned" name="Planned" fill="#62695e" radius={[6, 6, 3, 3]} /><Bar dataKey="actual" name="Actual" fill="#a6ff00" radius={[6, 6, 3, 3]} /></BarChart></ResponsiveContainer></div>
           </div>
         </div>
-        <div className="dashboard-people-art pointer-events-none relative h-40 overflow-hidden rounded-3xl border border-white/8 bg-black/10 sm:h-80"><div className="dashboard-people-glow" /><Image src="/stridebook-runners.png" alt="Two runners" fill sizes="280px" className="relative z-10 object-contain object-bottom drop-shadow-[0_16px_18px_rgba(0,0,0,.28)]" priority /></div>
+        <div className="dashboard-people-art dashboard-runner-carousel relative h-56 overflow-hidden rounded-3xl border border-white/8 bg-black/10 sm:h-80" role="region" aria-roledescription="carousel" aria-label="Stridebook runner gallery">
+          <div className="dashboard-people-glow" />
+          {runnerSlides.map((slide, index) => <div key={slide.src} className={cn("absolute inset-0 transition-opacity duration-500", activeSlide === index ? "opacity-100" : "pointer-events-none opacity-0")} role="group" aria-roledescription="slide" aria-label={`${index + 1} of ${runnerSlides.length}`}><Image src={slide.src} alt={slide.alt} fill sizes="(max-width: 640px) 100vw, 280px" className="relative z-10 object-contain object-bottom drop-shadow-[0_16px_18px_rgba(0,0,0,.28)]" priority={index === 0} /></div>)}
+          <div className="dashboard-carousel-shade" />
+          <div className="dashboard-carousel-copy"><span>{runnerSlides[activeSlide].eyebrow}</span><strong>{runnerSlides[activeSlide].caption}</strong></div>
+        </div>
       </div>
 
       <div className="mt-4 flex items-center justify-between gap-3 text-xs text-[#858b81]"><span>{activeDays} active day{activeDays === 1 ? "" : "s"}</span><span>{shortDate(weekDates[0])} — {shortDate(weekDates[weekDates.length - 1])}</span></div>

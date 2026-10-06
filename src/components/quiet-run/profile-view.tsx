@@ -3,7 +3,8 @@
 import { ArrowLeft, LogOut, PackageOpen, Save, UserRound } from "lucide-react";
 import { useState } from "react";
 import { ageFromBirthDate, estimateMaxHrFromBirthDate } from "@/lib/profile";
-import type { RunnerProfile } from "@/lib/types";
+import type { Activity, RunnerProfile } from "@/lib/types";
+import { SuuntoConnect } from "./suunto-connect";
 import { GlassCard, PageIntro } from "./shared";
 
 type ProfileViewProps = {
@@ -12,6 +13,7 @@ type ProfileViewProps = {
   onOpenGear: () => void;
   onSave: (profile: RunnerProfile) => Promise<void>;
   onSignOut?: () => void;
+  onSuuntoImport: (activity: Activity) => void;
 };
 
 function numberOrUndefined(value: string) {
@@ -20,10 +22,10 @@ function numberOrUndefined(value: string) {
 }
 
 /** Account settings and runner baselines used by activity analysis. */
-export function ProfileView({ profile, onBack, onOpenGear, onSave, onSignOut }: ProfileViewProps) {
+export function ProfileView({ profile, onBack, onOpenGear, onSave, onSignOut, onSuuntoImport }: ProfileViewProps) {
   const [form, setForm] = useState(() => ({
     ...profile,
-    maxHr: estimateMaxHrFromBirthDate(profile.birthDate) ?? profile.maxHr,
+    maxHr: profile.maxHr,
   }));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -51,7 +53,7 @@ export function ProfileView({ profile, onBack, onOpenGear, onSave, onSignOut }: 
     setForm((current) => ({
       ...current,
       birthDate: nextBirthDate,
-      maxHr: estimateMaxHrFromBirthDate(nextBirthDate) ?? current.maxHr,
+      maxHr: current.maxHr,
     }));
   }
 
@@ -66,6 +68,7 @@ export function ProfileView({ profile, onBack, onOpenGear, onSave, onSignOut }: 
       </div>
 
       <PageIntro eyebrow="Account settings" title="Your profile" description="Set the basics Stridebook uses to understand your training." />
+      <SuuntoConnect onImport={onSuuntoImport} />
 
       <form onSubmit={submit} className="grid gap-5 lg:grid-cols-[1fr_.8fr]">
         <GlassCard className="p-5 sm:p-6">
@@ -83,7 +86,7 @@ export function ProfileView({ profile, onBack, onOpenGear, onSave, onSignOut }: 
         <GlassCard className="p-5 sm:p-6">
           <p className="text-xs font-semibold uppercase tracking-[.16em] text-[#85887f]">Training baselines</p><h2 className="mt-1 text-lg font-medium">Heart rate & body</h2><p className="mt-1 text-xs leading-5 text-[#858880]">Max HR is used for every activity&apos;s Zone 1-5 breakdown.</p>
           <div className="mt-6 space-y-4">
-            <label className="block text-sm font-semibold text-[#5e665c]">Max HR<input required type="number" min="100" max="240" readOnly={Boolean(estimatedMaxHr)} value={form.maxHr} onChange={(event) => setForm((current) => ({ ...current, maxHr: Number(event.target.value) }))} className="mt-2 h-11 w-full rounded-2xl border border-[#343b34]/10 bg-white/65 px-3 text-sm outline-none focus:border-[#7f9277] read-only:cursor-not-allowed read-only:opacity-75" /><span className="mt-1 block text-xs font-normal text-[#858880]">{estimatedMaxHr ? `Tanaka estimate from age ${age} · ${estimatedMaxHr} bpm. Applied automatically from your date of birth.` : "Add your date of birth to estimate Max HR with the Tanaka formula, or enter a tested value."}</span></label>
+            <label className="block text-sm font-semibold text-[#5e665c]">Max HR<input required type="number" min="100" max="240" value={form.maxHr} onChange={(event) => setForm((current) => ({ ...current, maxHr: Number(event.target.value) }))} className="mt-2 h-11 w-full rounded-2xl border border-[#343b34]/10 bg-white/65 px-3 text-sm outline-none focus:border-[#7f9277] read-only:cursor-not-allowed read-only:opacity-75" /><span className="mt-1 block text-xs font-normal text-[#858880]">{estimatedMaxHr ? `Tanaka estimate from age ${age}: ${estimatedMaxHr} bpm. You can enter your own value.` : "Enter your own value, or add your date of birth to see an estimate."}</span>{estimatedMaxHr && <button type="button" onClick={() => setForm((current) => ({ ...current, maxHr: estimatedMaxHr }))} className="tap mt-2 rounded-xl bg-[#dce4d7]/60 px-3 py-2 text-xs font-semibold text-[#53644e]">Use estimate ({estimatedMaxHr} bpm)</button>}</label>
             <label className="block text-sm font-semibold text-[#5e665c]">Resting HR <span className="font-normal text-[#858880]">(optional)</span><input type="number" min="30" max="120" value={form.restingHr ?? ""} onChange={(event) => setForm((current) => ({ ...current, restingHr: numberOrUndefined(event.target.value) }))} className="mt-2 h-11 w-full rounded-2xl border border-[#343b34]/10 bg-white/65 px-3 text-sm outline-none focus:border-[#7f9277]" /></label>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block text-sm font-semibold text-[#5e665c]">Height <span className="font-normal text-[#858880]">cm</span><input type="number" min="80" max="250" value={form.heightCm ?? ""} onChange={(event) => setForm((current) => ({ ...current, heightCm: numberOrUndefined(event.target.value) }))} className="mt-2 h-11 w-full rounded-2xl border border-[#343b34]/10 bg-white/65 px-3 text-sm outline-none focus:border-[#7f9277]" /></label>

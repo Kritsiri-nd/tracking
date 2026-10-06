@@ -66,8 +66,9 @@ export function CalendarView({ state, personId, today, onAdd, onUpdate, onDelete
     const paceMax = Number(form.paceMax);
     const repeatWeeks = Number(form.repeatWeeks);
     if (!form.date) { setFormError("Choose a date."); return; }
-    if (form.type !== "rest" && (!Number.isFinite(distance) || distance <= 0)) { setFormError("Enter a distance greater than 0 km."); return; }
-    const updates: Partial<PlannedWorkout> = { date: form.date, type: form.type, title: form.title.trim() || workoutLabels[form.type], distanceKm: form.type === "rest" ? undefined : distance, durationMin: Number.isFinite(duration) && duration > 0 ? duration : undefined, paceMin: Number.isFinite(paceMin) && paceMin > 0 ? paceMin : undefined, paceMax: Number.isFinite(paceMax) && paceMax > 0 ? paceMax : undefined, note: form.note.trim() || undefined };
+    if (form.type !== "rest" && !(Number.isFinite(distance) && distance > 0) && !(Number.isFinite(duration) && duration > 0)) { setFormError("Enter a distance or duration greater than 0."); return; }
+    if (paceMin > 0 && paceMax > 0 && paceMin > paceMax) { setFormError("Pace from must be less than or equal to pace to."); return; }
+    const updates: Partial<PlannedWorkout> = { date: form.date, type: form.type, title: form.title.trim() || workoutLabels[form.type], distanceKm: form.type !== "rest" && Number.isFinite(distance) && distance > 0 ? distance : undefined, durationMin: Number.isFinite(duration) && duration > 0 ? duration : undefined, paceMin: Number.isFinite(paceMin) && paceMin > 0 ? paceMin : undefined, paceMax: Number.isFinite(paceMax) && paceMax > 0 ? paceMax : undefined, note: form.note.trim() || undefined };
     if (editingWorkout) onUpdate(editingWorkout.id, updates);
     else {
       const repeatCount = Number.isFinite(repeatWeeks) ? Math.min(12, Math.max(0, Math.floor(repeatWeeks))) : 0;
