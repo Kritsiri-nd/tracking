@@ -14,6 +14,9 @@ type ProfileViewProps = {
   onSave: (profile: RunnerProfile) => Promise<void>;
   onSignOut?: () => void;
   onSuuntoImport: (activity: Activity) => void;
+  onSuuntoSave: (activity: Activity) => Promise<boolean>;
+  suuntoActivities: Activity[];
+  onOpenProgress: () => void;
 };
 
 function numberOrUndefined(value: string) {
@@ -22,7 +25,7 @@ function numberOrUndefined(value: string) {
 }
 
 /** Account settings and runner baselines used by activity analysis. */
-export function ProfileView({ profile, onBack, onOpenGear, onSave, onSignOut, onSuuntoImport }: ProfileViewProps) {
+export function ProfileView({ profile, onBack, onOpenGear, onSave, onSignOut, onSuuntoImport, onSuuntoSave, suuntoActivities, onOpenProgress }: ProfileViewProps) {
   const [form, setForm] = useState(() => ({
     ...profile,
     maxHr: profile.maxHr,
@@ -68,7 +71,7 @@ export function ProfileView({ profile, onBack, onOpenGear, onSave, onSignOut, on
       </div>
 
       <PageIntro eyebrow="Account settings" title="Your profile" description="Set the basics Stridebook uses to understand your training." />
-      <SuuntoConnect onImport={onSuuntoImport} />
+      <SuuntoConnect onImport={onSuuntoImport} onSave={onSuuntoSave} activities={suuntoActivities} onOpenProgress={onOpenProgress} />
 
       <form onSubmit={submit} className="grid gap-5 lg:grid-cols-[1fr_.8fr]">
         <GlassCard className="p-5 sm:p-6">

@@ -35,6 +35,8 @@ function tabFromUrl(): Tab {
 
 export function QuietRunApp() {
   const [state, setState] = useState<LocalState>(initialState);
+  const latestState = useRef(state);
+  useEffect(() => { latestState.current = state; }, [state]);
   const [profile, setProfile] = useState<RunnerProfile>(() => defaultRunnerProfile());
   const [tab, setTab] = useState<Tab>(tabFromUrl);
   const [themeMode, setThemeMode] = useState<"dark" | "light">("dark");
@@ -45,6 +47,7 @@ export function QuietRunApp() {
   const [cloudStatus, setCloudStatus] = useState<"local" | "loading" | "saving" | "connected" | "error">("local");
   const [syncRevision, setSyncRevision] = useState(0);
   const cloudBootstrapped = useRef(false);
+  const lastAuthOwner = useRef<string | null | undefined>(undefined);
   const [previews, setPreviews] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploadError, setUploadError] = useState<string>();
@@ -61,10 +64,18 @@ export function QuietRunApp() {
     if (!supabase) return;
     let active = true;
     void supabase.auth.getSession().then(({ data }) => {
-      if (active) setSession(data.session);
+      if (active) {
+        if (lastAuthOwner.current === undefined) lastAuthOwner.current = data.session?.user.id ?? null;
+        setSession(data.session);
+      }
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
+      const nextOwner = nextSession?.user.id ?? null;
+      // Focus and token refresh can announce the same account again. Resetting
+      // cloudReady then would leave the loader waiting for an unchanged owner.
+      if (lastAuthOwner.current === nextOwner) return;
+      lastAuthOwner.current = nextOwner;
       cloudBootstrapped.current = false;
       setCloudReady(false);
       if (!nextSession) {
@@ -224,6 +235,18 @@ export function QuietRunApp() {
     setLoading(false);
   }
   /** Commit reviewed activities and link each one to a matching plan when possible. */
+  async function saveSuuntoActivity(activity: Activity) {
+    if (!authUserId || !cloudReady) throw new Error("Wait for your cloud data to finish loading before importing.");
+    const result = importActivities(latestState.current, [activity]);
+    if (!result.imported.length) return false;
+    // Finish the cloud save before marking this workout imported or fetching another.
+    await syncStateToSupabase(result.state, authUserId);
+    latestState.current = result.state;
+    setState(result.state);
+    setCloudStatus("connected");
+    return true;
+  }
+
   function confirmImport() {
     if (!previews.length) return;
     const { state: nextState, imported, skipped } = importActivities(state, previews);
@@ -317,7 +340,7 @@ export function QuietRunApp() {
       {toast && <div role="status" className="fixed inset-x-4 top-4 z-[60] mx-auto max-w-sm rounded-2xl border border-[#7f9277]/20 bg-[#343b34] px-4 py-3 text-center text-sm font-semibold text-white shadow-[0_14px_35px_rgba(53,48,39,.18)]">{toast}</div>}
       <main className="relative mx-auto w-full max-w-[1500px] px-4 pb-6 pt-5 sm:px-6 md:px-8 md:pt-7 lg:px-10">
         <Header profile={profile} themeMode={themeMode} onToggleTheme={() => setThemeMode((current) => current === "dark" ? "light" : "dark")} onOpenProfile={openProfile} />
-        {showProfile ? <ProfileView key={profile.id} profile={profile} onBack={closeProfile} onSave={handleProfileSave} onSignOut={supabase ? signOut : undefined} onOpenGear={() => openTab("gear")} onSuuntoImport={(activity) => { setPreviews([activity]); setUploadError(undefined); setActiveActivity(undefined); openTab("upload"); }} /> : activeActivity ? <ActivityDetail key={activeActivity.id} activity={activeActivity} workout={activeWorkout} shoes={state.shoes} maxHr={profile.maxHr} onMaxHrChange={handleMaxHrChange} onBack={() => setActiveActivity(undefined)} onShoeChange={(shoeId) => updateActivity(activeActivity.id, { shoeId })} onActivityUpdate={(updates) => updateActivity(activeActivity.id, updates)} onExportGpx={() => downloadGpx(activeActivity)} /> : <>
+        {showProfile ? <ProfileView key={profile.id} profile={profile} onBack={closeProfile} onSave={handleProfileSave} onSignOut={supabase ? signOut : undefined} onOpenGear={() => openTab("gear")} onSuuntoSave={saveSuuntoActivity} suuntoActivities={state.activities} onOpenProgress={() => openTab("progress")} onSuuntoImport={(activity) => { setPreviews([activity]); setUploadError(undefined); setActiveActivity(undefined); openTab("upload"); }} /> : activeActivity ? <ActivityDetail key={activeActivity.id} activity={activeActivity} workout={activeWorkout} shoes={state.shoes} maxHr={profile.maxHr} onMaxHrChange={handleMaxHrChange} onBack={() => setActiveActivity(undefined)} onShoeChange={(shoeId) => updateActivity(activeActivity.id, { shoeId })} onActivityUpdate={(updates) => updateActivity(activeActivity.id, updates)} onExportGpx={() => downloadGpx(activeActivity)} /> : <>
           {tab === "today" && <TodayView state={state} personId="me" today={today} weekDates={visibleWeekDates} weekOffset={weekOffset} onWeekChange={setWeekOffset} onWorkoutUpdate={updateWorkout} />}
           {tab === "calendar" && <CalendarView state={state} personId="me" today={today} onAdd={addWorkout} onUpdate={updateWorkout} onDelete={deleteWorkout} />}
           {tab === "upload" && <UploadView cloudEnabled={Boolean(session)} previews={previews} loading={loading} error={uploadError} onFiles={handleFiles} onReset={() => { setPreviews([]); setUploadError(undefined); }} onConfirm={confirmImport} />}

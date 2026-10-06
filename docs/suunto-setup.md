@@ -2,8 +2,11 @@
 
 The integration includes OAuth, encrypted server-side credentials, token refresh,
 recent workout discovery, FIT review/import, disconnect, and signed webhook capture.
-Webhook capture queues new workout keys. Saving runs requires reviewing them in the
-app; this version does not import workouts unattended.
+Webhook capture queues new workout keys. Load & save all imports every page of the
+last 30 days directly into Progress, skipping saved workouts. Keep the Profile page
+open during import. Downloads are spaced 8.5 seconds apart; each run is saved to
+Supabase before proceeding. Stop import retains completed saves. This version does
+not import workouts unattended when the app is closed.
 
 1. Run `supabase/migrations/20261006_suunto.sql` in the Supabase SQL Editor.
    This migration is additive. Do not rerun `supabase/schema.sql` against existing data.
@@ -32,7 +35,8 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
    `https://tracking-jet-three.vercel.app/api/suunto/webhook`.
    Configure the matching notification secret before enabling Notification sending.
 4. In Stridebook, sign in, open Profile, select Connect Suunto, and authorize your account.
-5. Load last 30 days (maximum 20 results), choose Review run, and confirm in Upload.
+5. Select Load & save all · last 30 days. All pages are imported directly into Progress.
+   Review run remains available for individual file previews.
    Existing import matching prevents duplicate runs and links matching training plans.
 6. Developer API allows 10 calls/minute and 200/week. Requests have an atomic
    per-account 8-second cooldown; multiple accounts still share the app subscription
