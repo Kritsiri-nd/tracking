@@ -4,7 +4,7 @@ import type { HTMLAttributes, ReactNode } from "react";
 import { BANGKOK_TIME_ZONE_NAME, shiftBangkokDateKey } from "@/lib/date";
 import type { WorkoutStatus, WorkoutType } from "@/lib/types";
 
-export type Tab = "today" | "calendar" | "upload" | "progress" | "gear";
+export type Tab = "today" | "calendar" | "health" | "upload" | "progress" | "gear" | "me";
 
 export const workoutLabels: Record<WorkoutType, string> = {
   easy: "Easy", long: "Long run", tempo: "Tempo", interval: "Interval", recovery: "Recovery", race: "Race", rest: "Rest",

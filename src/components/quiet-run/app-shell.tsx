@@ -23,9 +23,10 @@ import { TodayView } from "./today-view";
 import { CalendarView } from "./plan-view";
 import { UploadView } from "./import-view";
 import { ProfileView } from "./profile-view";
+import { HealthView } from "./health-view";
 import { cn, Tab } from "./shared";
 
-const validTabs: Tab[] = ["today", "calendar", "upload", "progress", "gear"];
+const validTabs: Tab[] = ["today", "calendar", "health", "upload", "progress", "gear", "me"];
 
 function tabFromUrl(): Tab {
   if (typeof window === "undefined") return "today";
@@ -40,7 +41,7 @@ export function QuietRunApp() {
   const [profile, setProfile] = useState<RunnerProfile>(() => defaultRunnerProfile());
   const [tab, setTab] = useState<Tab>(tabFromUrl);
   const [themeMode, setThemeMode] = useState<"dark" | "light">("dark");
-  const [showProfile, setShowProfile] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("profile") === "1");
+  const [showProfile, setShowProfile] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("profile") === "1" || tabFromUrl() === "me");
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState<Session | null | undefined>(() => isSupabaseConfigured() ? undefined : null);
   const [cloudReady, setCloudReady] = useState(() => !isSupabaseConfigured());
@@ -166,7 +167,7 @@ export function QuietRunApp() {
   useEffect(() => {
     const handlePopState = () => {
       setTab(tabFromUrl());
-      setShowProfile(new URLSearchParams(window.location.search).get("profile") === "1");
+      setShowProfile(new URLSearchParams(window.location.search).get("profile") === "1" || tabFromUrl() === "me");
       setActiveActivity(undefined);
     };
     window.addEventListener("popstate", handlePopState);
@@ -208,9 +209,9 @@ export function QuietRunApp() {
     const query = params.toString();
     window.history.pushState(null, "", query ? `${window.location.pathname}?${query}` : window.location.pathname);
   }
-  const openTab = (next: Tab) => { setActiveActivity(undefined); setShowProfile(false); setTab(next); writeNavigationUrl(next); window.scrollTo({ top: 0, behavior: "smooth" }); };
-  const openProfile = () => { setActiveActivity(undefined); setShowProfile(true); writeNavigationUrl(tab, true); window.scrollTo({ top: 0, behavior: "smooth" }); };
-  const closeProfile = () => { setShowProfile(false); writeNavigationUrl(tab); };
+  const openTab = (next: Tab) => { setActiveActivity(undefined); setShowProfile(next === "me"); setTab(next); writeNavigationUrl(next, next === "me"); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const openProfile = () => openTab("me");
+  const closeProfile = () => openTab("today");
   const retryCloudSync = () => { setCloudStatus("saving"); setSyncRevision((current) => current + 1); };
   /** Parse one or more FIT files in the browser; persistence happens only after review. */
   async function handleFiles(files: File[]) {
@@ -336,14 +337,15 @@ export function QuietRunApp() {
 
   return (
     <div className={cn("app-shell dashboard-theme min-h-screen pb-28 md:pb-8 md:pl-[250px]", themeMode === "light" && "dashboard-theme-light")}>
-      <Nav tab={tab} onChange={openTab} cloudStatus={cloudStatus} onRetrySync={retryCloudSync} />
+      <Nav tab={showProfile || tab === "upload" ? "me" : tab} onChange={openTab} cloudStatus={cloudStatus} onRetrySync={retryCloudSync} />
       {toast && <div role="status" className="fixed inset-x-4 top-4 z-[60] mx-auto max-w-sm rounded-2xl border border-[#7f9277]/20 bg-[#343b34] px-4 py-3 text-center text-sm font-semibold text-white shadow-[0_14px_35px_rgba(53,48,39,.18)]">{toast}</div>}
       <main className="relative mx-auto w-full max-w-[1500px] px-4 pb-6 pt-5 sm:px-6 md:px-8 md:pt-7 lg:px-10">
         <Header profile={profile} themeMode={themeMode} onToggleTheme={() => setThemeMode((current) => current === "dark" ? "light" : "dark")} onOpenProfile={openProfile} />
-        {showProfile ? <ProfileView key={profile.id} profile={profile} onBack={closeProfile} onSave={handleProfileSave} onSignOut={supabase ? signOut : undefined} onOpenGear={() => openTab("gear")} onSuuntoSave={saveSuuntoActivity} suuntoActivities={state.activities} onOpenProgress={() => openTab("progress")} onSuuntoImport={(activity) => { setPreviews([activity]); setUploadError(undefined); setActiveActivity(undefined); openTab("upload"); }} /> : activeActivity ? <ActivityDetail key={activeActivity.id} activity={activeActivity} workout={activeWorkout} shoes={state.shoes} maxHr={profile.maxHr} onMaxHrChange={handleMaxHrChange} onBack={() => setActiveActivity(undefined)} onShoeChange={(shoeId) => updateActivity(activeActivity.id, { shoeId })} onActivityUpdate={(updates) => updateActivity(activeActivity.id, updates)} onExportGpx={() => downloadGpx(activeActivity)} /> : <>
+        {showProfile ? <ProfileView key={profile.id} profile={profile} onBack={closeProfile} onSave={handleProfileSave} onSignOut={supabase ? signOut : undefined} onOpenGear={() => openTab("gear")} onOpenImport={() => openTab("upload")} onSuuntoSave={saveSuuntoActivity} suuntoActivities={state.activities} onOpenProgress={() => openTab("progress")} onSuuntoImport={(activity) => { setPreviews([activity]); setUploadError(undefined); setActiveActivity(undefined); openTab("upload"); }} /> : activeActivity ? <ActivityDetail key={activeActivity.id} activity={activeActivity} workout={activeWorkout} shoes={state.shoes} maxHr={profile.maxHr} onMaxHrChange={handleMaxHrChange} onBack={() => setActiveActivity(undefined)} onShoeChange={(shoeId) => updateActivity(activeActivity.id, { shoeId })} onActivityUpdate={(updates) => updateActivity(activeActivity.id, updates)} onExportGpx={() => downloadGpx(activeActivity)} /> : <>
           {tab === "today" && <TodayView state={state} personId="me" today={today} weekDates={visibleWeekDates} weekOffset={weekOffset} onWeekChange={setWeekOffset} onWorkoutUpdate={updateWorkout} />}
           {tab === "calendar" && <CalendarView state={state} personId="me" today={today} onAdd={addWorkout} onUpdate={updateWorkout} onDelete={deleteWorkout} />}
-          {tab === "upload" && <UploadView cloudEnabled={Boolean(session)} previews={previews} loading={loading} error={uploadError} onFiles={handleFiles} onReset={() => { setPreviews([]); setUploadError(undefined); }} onConfirm={confirmImport} />}
+          {tab === "health" && <HealthView today={today} onOpenMe={openProfile} />}
+          {tab === "upload" && <div className="space-y-5"><button type="button" onClick={openProfile} className="tap rounded-full bg-white/45 px-4 py-2 text-sm font-semibold">← Back to Me</button><UploadView cloudEnabled={Boolean(session)} previews={previews} loading={loading} error={uploadError} onFiles={handleFiles} onReset={() => { setPreviews([]); setUploadError(undefined); }} onConfirm={confirmImport} /></div>}
           {tab === "progress" && <ProgressView state={state} personId="me" today={today} onGoalSave={saveMonthlyGoal} onOpenActivity={setActiveActivity} />}
           {tab === "gear" && <GearView state={state} personId="me" onShoeAdd={addShoe} onShoeUpdate={updateShoe} onShoeRetire={retireShoe} onShoeImageChange={updateShoeImage} />}
         </>}

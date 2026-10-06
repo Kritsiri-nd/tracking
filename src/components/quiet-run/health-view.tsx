@@ -1,22 +1,25 @@
 "use client";
 
+import "./health.css";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { shiftBangkokDateKey } from "@/lib/date";
 import { suuntoFetch, syncSuuntoHealth } from "@/lib/suunto-client";
 import { dailyHealthRows, healthKinds, healthNumber, healthRange, percentage, sleepDate, sleepHours, type HealthSample, type HealthSync } from "@/lib/suunto-health";
-import { GlassCard, cn } from "./shared";
+import { GlassCard, PageIntro, cn } from "./shared";
+import { HealthDashboard } from "./health-dashboard";
 
 const display = (value: number | undefined, suffix = "", digits = 0) => value === undefined ? "—" : `${value.toLocaleString("en-US", { maximumFractionDigits: digits })}${suffix}`;
 const time = (value: unknown) => typeof value === "string" && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString("th-TH", { timeZone: "Asia/Bangkok" }) : "—";
 const labels = { sleep: "Sleep", daily: "Daily totals", activity: "Heart & activity", recovery: "Recovery" };
 
-export function HealthView({ today }: { today: string }) {
+export function HealthView({ today, onOpenMe }: { today: string; onOpenMe: () => void }) {
   const [fromDate, setFromDate] = useState(() => shiftBangkokDateKey(today, -27));
   const [toDate, setToDate] = useState(today);
   const [samples, setSamples] = useState<HealthSample[]>([]);
   const [sync, setSync] = useState<HealthSync[]>([]);
-  const [section, setSection] = useState<typeof healthKinds[number]>("sleep");
+  const [section, setSection] = useState<typeof healthKinds[number] | "overview">("overview");
   const [source, setSource] = useState("");
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -30,7 +33,7 @@ export function HealthView({ today }: { today: string }) {
   useEffect(() => {
     const abort = new AbortController();
     const timer = setTimeout(async () => {
-      setSamples([]); setSync([]); setError("");
+      setSamples([]); setSync([]); setError(""); setLoading(false);
       if (!range) return;
       setLoading(true);
       try {
@@ -69,11 +72,10 @@ export function HealthView({ today }: { today: string }) {
   const sleepChart = nights.map((s) => ({ date: sleepDate(s), deep: sleepHours(s.entry_data.DeepSleepDuration), light: sleepHours(s.entry_data.LightSleepDuration), rem: sleepHours(s.entry_data.REMSleepDuration), hrv: healthNumber(s.entry_data.AvgHRV) }));
   const latest = rows[0]?.entry_data ?? {};
   const chart = [...rows].reverse().filter((_, index) => index % Math.max(1, Math.ceil(rows.length / 1000)) === 0 || index === rows.length - 1).map((s) => ({ date: time(s.recorded_at), hr: healthNumber(s.entry_data.HR), balance: percentage(s.entry_data.Balance) }));
-  return <div className="space-y-5">
-    <GlassCard className="p-5">
-      <h2 className="text-xl font-medium">Suunto health</h2>
-      <p className="mt-2 text-sm text-[#777b73]">Sleep, daily activity and recovery from your Suunto account. Times use Bangkok time. Choose up to 28 days per sync; previously saved history stays available.</p>
-      <div className="mt-4 flex flex-wrap items-end gap-3">
+  return <div className="health-workspace space-y-5">
+    <PageIntro eyebrow="Your everyday wellbeing" title="Health" description="A little more in tune with you. Sleep, move and see how your body recovers." action={<button type="button" onClick={onOpenMe} className="health-secondary tap">Connected devices ↗</button>} />
+    <GlassCard className="health-sync-panel p-4 sm:p-5">
+      <div className="flex flex-wrap items-end gap-3">
         <label className="text-sm">From<input aria-label="Health from date" type="date" value={fromDate} disabled={busy} onChange={(e) => setFromDate(e.target.value)} className="mt-1 block rounded-xl bg-white/70 p-2" /></label>
         <label className="text-sm">To<input aria-label="Health to date" type="date" value={toDate} max={today} disabled={busy} onChange={(e) => setToDate(e.target.value)} className="mt-1 block rounded-xl bg-white/70 p-2" /></label>
         <button type="button" disabled={busy || !range} onClick={refresh} className="tap rounded-xl bg-[#7f9277] px-4 py-2 text-white disabled:opacity-50">{busy ? "Syncing all health data…" : "Sync all health data"}</button>
@@ -82,10 +84,11 @@ export function HealthView({ today }: { today: string }) {
       {!range && <p role="alert" className="mt-3 text-sm text-[#a4563e]">Choose valid dates spanning 1–28 days.</p>}
       {error && <p role="alert" className="mt-3 text-sm text-[#a4563e]">{error}</p>}
       <div aria-live="polite" className="mt-3 space-y-1 text-sm">{loading && <p>Loading saved data…</p>}{messages.map((message, i) => <p key={i}>{message}</p>)}</div>
-      <div className="mt-4 grid gap-2 sm:grid-cols-4">{healthKinds.map((kind) => { const status = sync.find((s) => s.kind === kind); return <div key={kind} className="rounded-xl bg-white/40 p-3 text-xs"><p className="font-semibold">{labels[kind]}</p><p className="mt-1">{status ? time(status.synced_at) : "Not synced yet"}</p>{status && <p className="mt-1">{status.sample_count.toLocaleString()} samples · {time(status.range_from)} – {time(status.range_to)}</p>}</div>; })}</div>
+      <details className="mt-3 text-xs"><summary className="health-muted cursor-pointer">Suunto sync details · up to 28 days per sync · Bangkok time</summary><div className="mt-3 grid gap-2 sm:grid-cols-4">{healthKinds.map((kind) => { const status = sync.find((s) => s.kind === kind); return <div key={kind} className="rounded-xl bg-white/40 p-3 text-xs"><p className="font-semibold">{labels[kind]}</p><p className="mt-1">{status ? time(status.synced_at) : "Not synced yet"}</p>{status && <p className="mt-1">{status.sample_count.toLocaleString()} samples · {time(status.range_from)} – {time(status.range_to)}</p>}</div>; })}</div></details>
     </GlassCard>
-    <div className="flex flex-wrap gap-2" aria-label="Health categories">{healthKinds.map((kind) => <button key={kind} type="button" aria-pressed={section === kind} onClick={() => setSection(kind)} className={cn("tap rounded-xl px-4 py-2 text-sm", section === kind ? "bg-[#7f9277] text-white" : "bg-white/50")}>{labels[kind]}</button>)}</div>
-    {!loading && !rows.length && <GlassCard className="p-5 text-sm text-[#777b73]">No {labels[section].toLowerCase()} data in this range. Connect Suunto in Profile and sync. Availability depends on your watch, recorded data and Suunto 24/7 API access.</GlassCard>}
+    <div className="health-category-bar flex flex-wrap gap-2" aria-label="Health categories">{(["overview", ...healthKinds] as const).map((kind) => <button key={kind} type="button" aria-pressed={section === kind} onClick={() => setSection(kind)} className={cn("tap rounded-xl px-4 py-2 text-sm", section === kind ? "health-category-active" : "health-category-idle")}>{kind === "overview" ? "Dashboard" : labels[kind]}</button>)}</div>
+    {section === "overview" && <><HealthDashboard samples={samples} daily={daily} loading={loading} onSelect={setSection} />{sources.length > 1 && <label className="health-muted block text-xs">Daily totals source<select value={selectedSource} onChange={(e) => setSource(e.target.value)} className="ml-2 max-w-full rounded-xl p-2">{sources.map((item) => <option key={item}>{item}</option>)}</select></label>}</>}
+    {section !== "overview" && !loading && !rows.length && <GlassCard className="p-5 text-sm text-[#777b73]">No {labels[section].toLowerCase()} data in this range. Connect Suunto in Me and sync. Availability depends on your watch, recorded data and Suunto 24/7 API access.</GlassCard>}
     {section === "sleep" && rows.length > 0 && <>
       <GlassCard className="p-5"><h3 className="font-semibold">Sleep stages · hours</h3><div className="mt-3 h-56"><ResponsiveContainer width="100%" height="100%"><BarChart data={sleepChart}><CartesianGrid vertical={false} /><XAxis dataKey="date" tick={{ fontSize: 10 }} /><YAxis /><Tooltip /><Bar dataKey="deep" name="Deep (h)" stackId="sleep" fill="#657d9a" /><Bar dataKey="light" name="Light (h)" stackId="sleep" fill="#a6b9c9" /><Bar dataKey="rem" name="REM (h)" stackId="sleep" fill="#b7a1c0" /></BarChart></ResponsiveContainer></div><p className="text-xs text-[#777b73]">Overnight sleep only. Missing stages stay blank; naps appear in the history below.</p></GlassCard>
       <GlassCard className="p-5"><h3 className="font-semibold">Overnight HRV · ms</h3><div className="mt-3 h-44"><ResponsiveContainer width="100%" height="100%"><LineChart data={sleepChart}><XAxis dataKey="date" tick={{ fontSize: 10 }} /><YAxis /><Tooltip /><Line dataKey="hrv" name="HRV (ms)" stroke="#7f9277" connectNulls={false} /></LineChart></ResponsiveContainer></div></GlassCard>

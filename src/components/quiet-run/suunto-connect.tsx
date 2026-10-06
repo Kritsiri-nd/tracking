@@ -99,7 +99,7 @@ export function SuuntoConnect({ onImport, onSave, activities, onOpenProgress }: 
     {syncResult && <div role="status" className="mt-4 rounded-2xl bg-white/30 p-3 text-sm">
       <p>{syncResult.saved} saved to Progress · {syncResult.skipped} already saved · {syncResult.failed.length} failed{busy ? " · Working…" : ""}</p>
       {healthStatus.map((message) => <p key={message} className="mt-1 text-xs">{message}</p>)}
-      {!busy && healthStatus.length > 0 && <p className="mt-2 text-xs">Open Progress → Health to view sleep, daily activity and recovery.</p>}
+      {!busy && healthStatus.length > 0 && <p className="mt-2 text-xs">Open Health to view sleep, daily activity and recovery.</p>}
       {busy && <p className="mt-1 text-xs text-[#858880]">Keep this page open. Requests are spaced 8.5 seconds apart to respect Suunto limits.</p>}
       {!!syncResult.failed.length && <details className="mt-2"><summary>Show failed workouts</summary>{syncResult.failed.map((message, index) => <p key={index} className="mt-1 text-xs">{message}</p>)}</details>}
       {!busy && <button className={`${button} mt-3`} onClick={onOpenProgress}>View Progress</button>}

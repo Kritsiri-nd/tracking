@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, LogOut, PackageOpen, Save, UserRound } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, FileUp, LogOut, PackageOpen, Save, UserRound } from "lucide-react";
 import { useState } from "react";
 import { ageFromBirthDate, estimateMaxHrFromBirthDate } from "@/lib/profile";
 import type { Activity, RunnerProfile } from "@/lib/types";
@@ -17,6 +17,7 @@ type ProfileViewProps = {
   onSuuntoSave: (activity: Activity) => Promise<boolean>;
   suuntoActivities: Activity[];
   onOpenProgress: () => void;
+  onOpenImport: () => void;
 };
 
 function numberOrUndefined(value: string) {
@@ -25,7 +26,7 @@ function numberOrUndefined(value: string) {
 }
 
 /** Account settings and runner baselines used by activity analysis. */
-export function ProfileView({ profile, onBack, onOpenGear, onSave, onSignOut, onSuuntoImport, onSuuntoSave, suuntoActivities, onOpenProgress }: ProfileViewProps) {
+export function ProfileView({ profile, onBack, onOpenGear, onSave, onSignOut, onSuuntoImport, onSuuntoSave, suuntoActivities, onOpenProgress, onOpenImport }: ProfileViewProps) {
   const [form, setForm] = useState(() => ({
     ...profile,
     maxHr: profile.maxHr,
@@ -70,7 +71,8 @@ export function ProfileView({ profile, onBack, onOpenGear, onSave, onSignOut, on
         {onSignOut && <button type="button" onClick={onSignOut} className="tap flex items-center gap-2 rounded-full bg-[#ead9d7]/70 px-4 py-2 text-sm font-semibold text-[#874e49]"><LogOut size={16} />Sign out</button>}
       </div>
 
-      <PageIntro eyebrow="Account settings" title="Your profile" description="Set the basics Stridebook uses to understand your training." />
+      <PageIntro eyebrow="Your space" title="Me" description="Your profile, connected devices and activity imports, all in one place." />
+      <button type="button" onClick={onOpenImport} className="me-import-card tap flex w-full items-center gap-4 rounded-[28px] p-5 text-left"><span className="health-icon"><FileUp size={24} /></span><span className="flex-1"><span className="block text-lg font-semibold">Import activities</span><span className="health-muted mt-1 block text-sm">Upload FIT files from Suunto, COROS or another watch.</span></span><ArrowUpRight size={22} /></button>
       <SuuntoConnect onImport={onSuuntoImport} onSave={onSuuntoSave} activities={suuntoActivities} onOpenProgress={onOpenProgress} />
 
       <form onSubmit={submit} className="grid gap-5 lg:grid-cols-[1fr_.8fr]">

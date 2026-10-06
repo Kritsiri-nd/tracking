@@ -8,9 +8,8 @@ import { monthlyStatistics, summarizeActivities, yearStatistics } from "@/lib/st
 import { formatDuration, formatPace, paceMinutesPerKm } from "@/lib/progress";
 import type { Activity, LocalState, MonthlyGoal, PersonId, WorkoutType } from "@/lib/types";
 import { GlassCard, Metric, PageIntro, cn, monthKey, monthLabel, shortDate, typeColors, workoutLabels } from "./shared";
-import { HealthView } from "./health-view";
 
-type ProgressSection = "overview" | "goals" | "statistics" | "health";
+type ProgressSection = "overview" | "goals" | "statistics";
 type ActivityRange = "recent" | "month" | "year" | "all";
 
 const chartTooltipStyle = { borderRadius: 16, border: "1px solid rgba(0,0,0,.06)", background: "#fffdf8" };
@@ -87,7 +86,7 @@ export function ProgressView({ state, personId, today, onGoalSave, onOpenActivit
       <PageIntro eyebrow="Training intelligence" title="Progress" description="Turn every run into a clearer picture of your consistency, effort, and direction." />
 
       <div role="tablist" aria-label="Progress sections" className="flex w-full gap-1 overflow-x-auto rounded-2xl border border-white/70 bg-white/45 p-1">
-        {(["overview", "goals", "statistics", "health"] as ProgressSection[]).map((item) => <button key={item} type="button" role="tab" aria-selected={section === item} onClick={() => setSection(item)} className={cn("tap min-w-24 flex-1 rounded-xl px-3 py-2 text-xs font-semibold capitalize", section === item ? "bg-[#343b34] text-white" : "text-[#687066]")}>{item}</button>)}
+        {(["overview", "goals", "statistics"] as ProgressSection[]).map((item) => <button key={item} type="button" role="tab" aria-selected={section === item} onClick={() => setSection(item)} className={cn("tap min-w-24 flex-1 rounded-xl px-3 py-2 text-xs font-semibold capitalize", section === item ? "bg-[#343b34] text-white" : "text-[#687066]")}>{item}</button>)}
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -97,8 +96,7 @@ export function ProgressView({ state, personId, today, onGoalSave, onOpenActivit
         <Metric label="Planned" value={String(workouts.length)} suffix="sessions" icon={Target} />
       </div>
 
-      {section === "health" && <HealthView today={today} />}
-      {section !== "statistics" && section !== "health" && <>
+      {section !== "statistics" && <>
         <GlassCard className="p-5 sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div><p className="text-xs font-semibold uppercase tracking-[.18em] text-[#85887f]">Monthly goal</p><h2 className="mt-1 text-xl font-medium">{monthLabel(currentMonth)}</h2><p className="mt-1 text-sm text-[#777b73]">{formatDuration(currentMonthStats.durationSec)} h · {currentMonthStats.sessions} sessions</p></div>
