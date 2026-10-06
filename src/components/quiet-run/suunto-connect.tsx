@@ -1,22 +1,13 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { suuntoFetch as request, syncSuuntoHealth } from "@/lib/suunto-client";
 import { parseFitFile } from "@/lib/fit";
 import type { Activity } from "@/lib/types";
 import { syncSuuntoWorkouts, type SuuntoSyncResult } from "@/lib/suunto-sync";
 import { GlassCard } from "./shared";
 
 type Workout = { workoutKey: string; workoutName?: string; startTime?: number; totalDistance?: number };
-async function request(path: string, method = "GET", signal?: AbortSignal) {
-  const { data } = await supabase!.auth.getSession();
-  if (!data.session) throw new Error("Sign in to connect Suunto.");
-  const response = await fetch(`/api/suunto/${path}`, { method, headers: { Authorization: `Bearer ${data.session.access_token}` }, cache: "no-store", signal });
-  if (!response.ok) {
-    const result = await response.json().catch(() => ({}));
-    throw Object.assign(new Error(result.error || "Could not reach Suunto. Try again."), { status: response.status });
-  }
-  return { response, owner: data.session.user.id };
-}
 export function SuuntoConnect({ onImport, onSave, activities, onOpenProgress }: { onImport: (activity: Activity) => void; onSave: (activity: Activity) => Promise<boolean>; activities: Activity[]; onOpenProgress: () => void }) {
   const [connected, setConnected] = useState(false);
   const [username, setUsername] = useState<string>();
@@ -27,6 +18,7 @@ export function SuuntoConnect({ onImport, onSave, activities, onOpenProgress }: 
   const [cooldown, setCooldown] = useState(false);
   const [syncResult, setSyncResult] = useState<SuuntoSyncResult>();
   const [syncing, setSyncing] = useState(false);
+  const [healthStatus, setHealthStatus] = useState<string[]>([]);
   const syncController = useRef<AbortController | null>(null);
   useEffect(() => () => syncController.current?.abort(), []);
   useEffect(() => {
@@ -53,6 +45,7 @@ export function SuuntoConnect({ onImport, onSave, activities, onOpenProgress }: 
     syncController.current = controller;
     setSyncing(true);
     setSyncResult({ saved: 0, skipped: 0, failed: [] });
+    setHealthStatus([]);
     const wait = () => new Promise<void>((resolve, reject) => {
       const abort = () => { window.clearTimeout(timer); reject(new DOMException("Import stopped", "AbortError")); };
       const timer = window.setTimeout(() => { controller.signal.removeEventListener("abort", abort); resolve(); }, 8500);
@@ -77,6 +70,10 @@ export function SuuntoConnect({ onImport, onSave, activities, onOpenProgress }: 
         save: onSave,
       });
       setSyncResult(result);
+      const now = Date.now();
+      await syncSuuntoHealth(now - 28 * 86400000, now, controller.signal, (kind, count, error) => {
+        setHealthStatus((current) => [...current, error ? `${kind}: ${error}` : `${kind}: ${count} samples saved`]);
+      });
     } catch (caught) {
       if (controller.signal.aborted) setError("Import stopped. Completed runs are already saved in Progress.");
       else throw caught;
@@ -85,14 +82,14 @@ export function SuuntoConnect({ onImport, onSave, activities, onOpenProgress }: 
   const button = "tap rounded-full bg-[#dce4d7] px-4 py-2 text-sm font-semibold text-[#53644e] disabled:opacity-50";
   return <GlassCard className="p-5 sm:p-6">
     <h2 className="text-lg font-medium">Suunto</h2>
-    <p className="mt-2 text-sm text-[#858880]">{connected ? `Connected as ${username}. Load and save all workouts from the last 30 days directly to Progress. Existing runs are skipped.` : "Connect your Suunto account to import runs with heart rate, laps and GPS."}</p>
+    <p className="mt-2 text-sm text-[#858880]">{connected ? `Connected as ${username}. Save workouts from the last 30 days plus sleep, daily activity and recovery from the last 28 days. Existing runs are skipped.` : "Connect your Suunto account to import workouts, sleep, daily activity and recovery."}</p>
     <p className="mt-2 text-xs text-[#858880]">Developer API: 200 calls/week. Each list or FIT download uses one call; wait 8 seconds between requests.</p>
     {error && <p role="alert" className="mt-3 text-sm text-[#b46f67]">{error}</p>}
     <div className="mt-4 flex flex-wrap gap-2">
       {!connected ? <button className={button} disabled={busy || checking || !supabase} onClick={() => void run(async () => {
         const { response } = await request("connect", "POST"); window.location.assign((await response.json()).url);
       })}>{checking ? "Checking connection…" : busy ? "Connecting…" : "Connect Suunto"}</button> : <>
-        <button className={button} disabled={busy || cooldown} onClick={() => void run(importAll)}>{busy ? "Importing to Progress…" : cooldown ? "Wait 8 seconds…" : "Load & save all · last 30 days"}</button>
+        <button className={button} disabled={busy || cooldown} onClick={() => void run(importAll)}>{busy ? "Importing to Progress…" : cooldown ? "Wait 8 seconds…" : "Load & save all Suunto data"}</button>
         {syncing && <button className={button} onClick={() => syncController.current?.abort()}>Stop import</button>}
         <button className={button} disabled={busy} onClick={() => void run(async () => {
           await request("connection", "DELETE"); setConnected(false); setUsername(undefined); setWorkouts(undefined);
@@ -101,6 +98,8 @@ export function SuuntoConnect({ onImport, onSave, activities, onOpenProgress }: 
     </div>
     {syncResult && <div role="status" className="mt-4 rounded-2xl bg-white/30 p-3 text-sm">
       <p>{syncResult.saved} saved to Progress · {syncResult.skipped} already saved · {syncResult.failed.length} failed{busy ? " · Working…" : ""}</p>
+      {healthStatus.map((message) => <p key={message} className="mt-1 text-xs">{message}</p>)}
+      {!busy && healthStatus.length > 0 && <p className="mt-2 text-xs">Open Progress → Health to view sleep, daily activity and recovery.</p>}
       {busy && <p className="mt-1 text-xs text-[#858880]">Keep this page open. Requests are spaced 8.5 seconds apart to respect Suunto limits.</p>}
       {!!syncResult.failed.length && <details className="mt-2"><summary>Show failed workouts</summary>{syncResult.failed.map((message, index) => <p key={index} className="mt-1 text-xs">{message}</p>)}</details>}
       {!busy && <button className={`${button} mt-3`} onClick={onOpenProgress}>View Progress</button>}

@@ -60,7 +60,7 @@ export async function suuntoRequest(owner: string, path: string) {
     await saveTokens(owner, data.username, tokens);
   }
   const response = await fetch(`https://cloudapi.suunto.com${path}`, { headers: { Authorization: `Bearer ${tokens.access_token}`, "Ocp-Apim-Subscription-Key": suuntoConfig().subscription }, cache: "no-store", signal: AbortSignal.timeout(20000) });
-  if (!response.ok) throw new SuuntoError(response.status === 429 ? "Suunto API quota reached. Try again later." : response.status === 401 ? "Suunto authorization expired. Disconnect and reconnect." : "Suunto could not return this workout. Try again later.", response.status === 429 ? 429 : 502);
+  if (!response.ok) throw new SuuntoError(response.status === 429 ? "Suunto API quota reached. Try again later." : response.status === 401 ? "Suunto authorization expired. Disconnect and reconnect." : response.status === 403 ? "Suunto denied access to this data. Check your subscription permissions for the 247 API." : "Suunto could not return this data. Try again later.", [401, 403, 429].includes(response.status) ? response.status : 502);
   return response;
 }
 export function apiError(error: unknown) {
